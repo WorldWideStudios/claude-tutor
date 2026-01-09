@@ -1,6 +1,4 @@
-// startup research memo agent for deep tech companies from vinod khoslas firm
+const projectName = 'startup research memo agent for deep tech companies from vinod khoslas firm';
+const version = '1.0.0';
 
-// startup research memo agent for deep tech companies from vinod khoslas firm
-
-console.log('Hello from startup research memo agent for deep tech companies from vinod khoslas firm!');
-
+console.log(`${projectName} v${version}`);
