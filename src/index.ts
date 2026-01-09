@@ -1,4 +1,5 @@
-const projectName = 'startup research memo agent for deep tech companies from vinod khoslas firm';
-const version = '1.0.0';
+function greet(name: string): string {
+  return `Hello, ${name}! Welcome to startup research memo agent for deep tech companies from vinod khoslas firm.`;
+}
 
-console.log(`${projectName} v${version}`);
+console.log(greet('User'));
