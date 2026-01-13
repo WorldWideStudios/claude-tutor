@@ -4,6 +4,10 @@ import {
   clearExpectedText,
   getExpectedText,
   displayTargetLine,
+  initTyperSharkDisplay,
+  redrawTyperShark,
+  initMultiLineTyperShark,
+  redrawMultiLineTyperShark,
 } from './display.js';
 import chalk from 'chalk';
 
@@ -14,14 +18,184 @@ const colors = {
   orange: chalk.hex('#F59E0B'),
   dim: chalk.gray,
   primary: chalk.hex('#10B981'),
+  tan: chalk.hex('#D4A574'),
 };
+
+/**
+ * Interactive select with arrow keys
+ * Shows options, user navigates with arrows, Enter to select
+ * Last option is always "Other" to type custom value
+ */
+export interface SelectOption {
+  label: string;
+  value: string;
+  description?: string;
+}
+
+export function createInteractiveSelect(
+  rl: readline.Interface,
+  question: string,
+  options: SelectOption[]
+): Promise<string> {
+  return new Promise((resolve) => {
+    // Non-TTY fallback
+    if (!process.stdin.isTTY) {
+      console.log(question);
+      options.forEach((opt, i) => console.log(`  ${i + 1}. ${opt.label}`));
+      console.log(`  ${options.length + 1}. Other (type your own)`);
+      process.stdout.write(colors.primary('› '));
+      rl.once('line', (input) => {
+        const num = parseInt(input.trim());
+        if (num > 0 && num <= options.length) {
+          resolve(options[num - 1].value);
+        } else {
+          resolve(input.trim());
+        }
+      });
+      return;
+    }
+
+    // Add "Other" option
+    const allOptions = [...options, { label: 'Other (type your own)', value: '__OTHER__' }];
+    let selectedIndex = 0;
+    let isTypingCustom = false;
+    let customInput = '';
+
+    const drawOptions = () => {
+      // Clear previous lines and redraw
+      const totalLines = allOptions.length + 2; // question + options + blank
+      process.stdout.write(`\x1B[${totalLines}A`); // Move up
+
+      console.log(colors.primary(question));
+      allOptions.forEach((opt, i) => {
+        process.stdout.write('\r\x1B[K'); // Clear line
+        if (i === selectedIndex) {
+          process.stdout.write(colors.primary('  › ') + colors.primary(opt.label));
+          if (opt.description) {
+            process.stdout.write(colors.dim(` - ${opt.description}`));
+          }
+        } else {
+          process.stdout.write(colors.dim('    ' + opt.label));
+        }
+        console.log();
+      });
+      process.stdout.write('\r\x1B[K'); // Clear the line after options
+    };
+
+    const drawCustomInput = () => {
+      process.stdout.write('\r\x1B[K');
+      process.stdout.write(colors.primary('› ') + customInput);
+    };
+
+    // Initial draw
+    console.log(colors.primary(question));
+    allOptions.forEach((opt, i) => {
+      if (i === selectedIndex) {
+        process.stdout.write(colors.primary('  › ') + colors.primary(opt.label));
+        if (opt.description) {
+          process.stdout.write(colors.dim(` - ${opt.description}`));
+        }
+      } else {
+        process.stdout.write(colors.dim('    ' + opt.label));
+      }
+      console.log();
+    });
+    console.log(); // Blank line for input area
+
+    // Enable raw mode
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+
+    const cleanup = () => {
+      process.stdin.setRawMode(false);
+      process.stdin.removeListener('data', handleKeypress);
+    };
+
+    const handleKeypress = (chunk: Buffer) => {
+      const key = chunk.toString();
+
+      // Ctrl+C - exit
+      if (key === '\x03') {
+        cleanup();
+        console.log('\n');
+        process.exit(0);
+      }
+
+      if (isTypingCustom) {
+        // Custom input mode
+        if (key === '\r' || key === '\n') {
+          // Submit custom input
+          cleanup();
+          console.log();
+          resolve(customInput || options[0]?.value || '');
+          return;
+        }
+        if (key === '\x7f' || key === '\b') {
+          // Backspace
+          customInput = customInput.slice(0, -1);
+          drawCustomInput();
+          return;
+        }
+        if (key === '\x1b') {
+          // Escape - go back to selection
+          isTypingCustom = false;
+          customInput = '';
+          drawOptions();
+          return;
+        }
+        if (key.length === 1 && key >= ' ') {
+          customInput += key;
+          drawCustomInput();
+        }
+        return;
+      }
+
+      // Selection mode
+      if (key === '\x1b[A' || key === '\x1bOA') {
+        // Up arrow
+        selectedIndex = (selectedIndex - 1 + allOptions.length) % allOptions.length;
+        drawOptions();
+      } else if (key === '\x1b[B' || key === '\x1bOB') {
+        // Down arrow
+        selectedIndex = (selectedIndex + 1) % allOptions.length;
+        drawOptions();
+      } else if (key === '\r' || key === '\n') {
+        // Enter - select
+        if (allOptions[selectedIndex].value === '__OTHER__') {
+          // Switch to custom input mode
+          isTypingCustom = true;
+          process.stdout.write('\r\x1B[K');
+          process.stdout.write(colors.dim('  Type your answer (Esc to go back):'));
+          console.log();
+          drawCustomInput();
+        } else {
+          cleanup();
+          console.log();
+          resolve(allOptions[selectedIndex].value);
+        }
+      }
+    };
+
+    process.stdin.on('data', handleKeypress);
+  });
+}
+
+/**
+ * A single line of code with its comment
+ */
+export interface CodeLine {
+  comment: string;  // The // comment explaining this line
+  code: string;     // The actual code to type
+}
 
 /**
  * Result of extracting code from Claude's response
  */
 export interface ExtractedCode {
-  code: string;
+  code: string;              // For single-line commands
   explanation: string | null;
+  isMultiLine: boolean;      // True for heredocs with interleaved comments
+  lines?: CodeLine[];        // Array of comment+code pairs for heredocs
 }
 
 /**
@@ -95,31 +269,95 @@ function generateExplanation(command: string): string | null {
  * Generates explanations for common commands
  * Looks for patterns like:
  * - Single-line commands (mkdir, cat, git, etc.)
- * - Heredoc content between << 'EOF' and EOF
+ * - Interleaved heredoc format (// comment + code line pairs)
  */
 export function extractExpectedCode(text: string): ExtractedCode | null {
   const lines = text.split('\n');
 
-  // Look for heredoc pattern
-  const heredocMatch = text.match(/cat\s+>\s+\S+\s+<<\s*['"]?EOF['"]?\n([\s\S]*?)\nEOF/);
-  if (heredocMatch) {
-    const fileMatch = heredocMatch[0].match(/>\s*(\S+)/);
-    const file = fileMatch ? fileMatch[1] : 'file';
-    return {
-      code: heredocMatch[0],
-      explanation: `creates ${file} with the content between the markers`
-    };
-  }
+  // Look for interleaved heredoc format:
+  // // comment
+  // cat > file << 'EOF'
+  // // comment
+  // code line
+  // ...
+  // // comment
+  // EOF
+  const interleavedLines: CodeLine[] = [];
+  let inInterleavedBlock = false;
+  let currentComment = '';
+  let foundHeredocStart = false;
 
-  // Look for single commands on their own line
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const trimmed = line.trim();
-    // Match common commands
+
+    // Check for // comment line
+    if (trimmed.startsWith('//')) {
+      currentComment = trimmed.slice(2).trim();
+      // Look ahead - if next line is code, we're in an interleaved block
+      const nextLine = lines[i + 1]?.trim();
+      if (nextLine && !nextLine.startsWith('//')) {
+        inInterleavedBlock = true;
+      }
+      continue;
+    }
+
+    // If we have a pending comment, pair it with this code line
+    if (inInterleavedBlock && currentComment) {
+      // Check if this is a heredoc start
+      if (/^cat\s+>\s+\S+\s+<<\s*['"]?EOF['"]?$/.test(trimmed)) {
+        foundHeredocStart = true;
+      }
+
+      interleavedLines.push({
+        comment: currentComment,
+        code: trimmed
+      });
+      currentComment = '';
+
+      // Check if this is EOF (end of heredoc)
+      if (trimmed === 'EOF' && foundHeredocStart) {
+        // We found a complete interleaved heredoc block
+        const fileMatch = interleavedLines[0]?.code.match(/>\s*(\S+)/);
+        const file = fileMatch ? fileMatch[1] : 'file';
+        return {
+          code: interleavedLines.map(l => l.code).join('\n'),
+          explanation: `creates ${file}`,
+          isMultiLine: true,
+          lines: interleavedLines
+        };
+      }
+    }
+  }
+
+  // If we found an interleaved block but no EOF (partial match), still return it
+  if (interleavedLines.length > 0 && foundHeredocStart) {
+    const fileMatch = interleavedLines[0]?.code.match(/>\s*(\S+)/);
+    const file = fileMatch ? fileMatch[1] : 'file';
+    return {
+      code: interleavedLines.map(l => l.code).join('\n'),
+      explanation: `creates ${file}`,
+      isMultiLine: true,
+      lines: interleavedLines
+    };
+  }
+
+  // Fall back to looking for single commands on their own line
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    // Match common commands (not preceded by //)
     if (/^(mkdir|cat|echo|touch|git|npm|npx|node|tsc)\s/.test(trimmed)) {
+      // Check if previous line was a // comment
+      const prevLine = lines[i - 1]?.trim();
+      const explanation = prevLine?.startsWith('//')
+        ? prevLine.slice(2).trim()
+        : generateExplanation(trimmed);
+
       return {
         code: trimmed,
-        explanation: generateExplanation(trimmed)
+        explanation,
+        isMultiLine: false
       };
     }
   }
@@ -220,4 +458,216 @@ function calculateAccuracy(input: string, expected: string): number {
 export function shouldTrackInput(claudeResponse: string): ExtractedCode | null {
   // Extract the last code/command Claude showed
   return extractExpectedCode(claudeResponse);
+}
+
+// ============================================
+// TYPER SHARK - REAL-TIME CHARACTER INPUT
+// ============================================
+
+/**
+ * Create Typer Shark style input with real-time character feedback
+ * - Shows target in yellow, turns green as correctly typed
+ * - Wrong keys don't advance (character stays yellow)
+ * - Supports backspace to correct mistakes
+ */
+export function createTyperSharkInput(
+  rl: readline.Interface,
+  expectedText: string,
+  explanation: string | null
+): Promise<string> {
+  return new Promise((resolve) => {
+    // Non-TTY fallback to regular input
+    if (!process.stdin.isTTY) {
+      console.log(colors.dim(`  Type: ${expectedText}`));
+      process.stdout.write(colors.primary('› '));
+      rl.once('line', resolve);
+      return;
+    }
+
+    // Initialize display
+    initTyperSharkDisplay(expectedText, explanation || undefined);
+
+    let inputBuffer = '';
+    let correctCount = 0;
+
+    // Enable raw mode for character-by-character input
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+
+    const handleKeypress = (chunk: Buffer) => {
+      const key = chunk.toString();
+
+      // Ctrl+C - exit
+      if (key === '\x03') {
+        process.stdin.setRawMode(false);
+        process.stdin.removeListener('data', handleKeypress);
+        console.log('\n');
+        process.exit(0);
+      }
+
+      // Enter - submit input
+      if (key === '\r' || key === '\n') {
+        process.stdin.setRawMode(false);
+        process.stdin.removeListener('data', handleKeypress);
+        console.log(); // New line after input
+        resolve(inputBuffer);
+        return;
+      }
+
+      // Backspace - remove last character
+      if (key === '\x7f' || key === '\b') {
+        if (inputBuffer.length > 0) {
+          // If deleting a correct character, decrease correctCount
+          if (correctCount > 0 && correctCount === inputBuffer.length) {
+            correctCount--;
+          }
+          inputBuffer = inputBuffer.slice(0, -1);
+          redrawTyperShark(expectedText, inputBuffer, correctCount);
+        }
+        return;
+      }
+
+      // Escape - cancel (optional, could also just ignore)
+      if (key === '\x1b') {
+        // Ignore escape or handle as needed
+        return;
+      }
+
+      // Regular character
+      if (key.length === 1 && key >= ' ') {
+        inputBuffer += key;
+
+        // Only increment correctCount if:
+        // 1. We're typing at the next sequential position (no gaps from mistakes)
+        // 2. The character matches the expected character
+        // This forces user to backspace and fix mistakes before progressing
+        const newCharPos = inputBuffer.length - 1;
+        if (newCharPos === correctCount && correctCount < expectedText.length && key === expectedText[correctCount]) {
+          correctCount++;
+        }
+
+        redrawTyperShark(expectedText, inputBuffer, correctCount);
+      }
+    };
+
+    process.stdin.on('data', handleKeypress);
+  });
+}
+
+/**
+ * Create multi-line Typer Shark input for heredocs
+ * Tracks through each line one at a time, showing progress
+ */
+export function createMultiLineTyperSharkInput(
+  rl: readline.Interface,
+  lines: CodeLine[]
+): Promise<string[]> {
+  return new Promise((resolve) => {
+    // Non-TTY fallback
+    if (!process.stdin.isTTY) {
+      console.log(colors.dim('  Multi-line input:'));
+      lines.forEach(l => console.log(colors.dim(`    ${l.code}`)));
+      // Collect all lines via regular readline
+      const results: string[] = [];
+      const collectLine = (index: number) => {
+        if (index >= lines.length) {
+          resolve(results);
+          return;
+        }
+        process.stdout.write(colors.primary('› '));
+        rl.once('line', (input) => {
+          results.push(input);
+          collectLine(index + 1);
+        });
+      };
+      collectLine(0);
+      return;
+    }
+
+    // Initialize display with all lines
+    initMultiLineTyperShark(lines, 0);
+
+    let currentLineIndex = 0;
+    let inputBuffer = '';
+    let correctCount = 0;
+    const completedLines: string[] = [];
+
+    // Enable raw mode
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+
+    const handleKeypress = (chunk: Buffer) => {
+      const key = chunk.toString();
+      const currentLine = lines[currentLineIndex];
+      const expectedCode = currentLine.code;
+
+      // Ctrl+C - exit
+      if (key === '\x03') {
+        process.stdin.setRawMode(false);
+        process.stdin.removeListener('data', handleKeypress);
+        console.log('\n');
+        process.exit(0);
+      }
+
+      // Enter - submit current line
+      if (key === '\r' || key === '\n') {
+        // Save the completed line
+        completedLines.push(inputBuffer);
+
+        // Move to next line
+        currentLineIndex++;
+        inputBuffer = '';
+        correctCount = 0;
+
+        // Check if we're done with all lines
+        if (currentLineIndex >= lines.length) {
+          process.stdin.setRawMode(false);
+          process.stdin.removeListener('data', handleKeypress);
+          console.log(); // New line after final input
+          console.log(colors.success('✓ All lines entered!'));
+          resolve(completedLines);
+          return;
+        }
+
+        // Redraw with new current line highlighted
+        redrawMultiLineTyperShark(lines, currentLineIndex, inputBuffer, correctCount);
+        return;
+      }
+
+      // Backspace
+      if (key === '\x7f' || key === '\b') {
+        if (inputBuffer.length > 0) {
+          if (correctCount > 0 && correctCount === inputBuffer.length) {
+            correctCount--;
+          }
+          inputBuffer = inputBuffer.slice(0, -1);
+          redrawMultiLineTyperShark(lines, currentLineIndex, inputBuffer, correctCount);
+        }
+        return;
+      }
+
+      // Escape - ignore
+      if (key === '\x1b') {
+        return;
+      }
+
+      // Regular character
+      if (key.length === 1 && key >= ' ') {
+        inputBuffer += key;
+
+        // Only increment correctCount if:
+        // 1. We're typing at the next sequential position (no gaps from mistakes)
+        // 2. The character matches the expected character
+        // This forces user to backspace and fix mistakes before progressing
+        const newCharPos = inputBuffer.length - 1;
+        if (newCharPos === correctCount && correctCount < expectedCode.length && key === expectedCode[correctCount]) {
+          correctCount++;
+        }
+
+        redrawMultiLineTyperShark(lines, currentLineIndex, inputBuffer, correctCount);
+      }
+    };
+
+    process.stdin.on('data', handleKeypress);
+  });
 }

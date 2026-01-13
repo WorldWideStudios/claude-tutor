@@ -42,6 +42,16 @@ export const SegmentSchema = z.discriminatedUnion('type', [
 ]);
 export type Segment = z.infer<typeof SegmentSchema>;
 
+// Learner profile for personalization
+export const LearnerProfileSchema = z.object({
+  experienceLevel: z.enum(['complete-beginner', 'some-experience', 'know-basics']),
+  projectIdea: z.string(),
+  projectType: z.string().optional(),      // What type of app (CLI, web, etc.)
+  projectPurpose: z.string().optional(),   // What problem it solves
+  projectFeatures: z.string().optional()   // Key features they want
+});
+export type LearnerProfile = z.infer<typeof LearnerProfileSchema>;
+
 // Full curriculum definition
 export const CurriculumSchema = z.object({
   id: z.string(),
@@ -49,6 +59,7 @@ export const CurriculumSchema = z.object({
   projectGoal: z.string(),
   workingDirectory: z.string(),
   segments: z.array(SegmentSchema),
+  learnerProfile: LearnerProfileSchema.optional(),
   createdAt: z.string()
 });
 export type Curriculum = z.infer<typeof CurriculumSchema>;

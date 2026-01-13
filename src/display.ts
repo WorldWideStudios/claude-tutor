@@ -18,6 +18,7 @@ const colors = {
   error: noColor ? chalk.reset : chalk.red,
   warning: noColor ? chalk.reset : chalk.yellow,
   orange: noColor ? chalk.reset : chalk.hex('#F59E0B'),
+  tan: noColor ? chalk.reset : chalk.hex('#D4A574'),  // Light tan for Typer Shark untyped
   text: noColor ? chalk.reset : chalk.white,
   dim: noColor ? chalk.reset : chalk.gray,
   muted: noColor ? chalk.reset : chalk.dim,
@@ -86,7 +87,7 @@ export function displayWelcome(): void {
   clearScreen();
   console.log();
   console.log(colors.primary('  ╭───────────────────────────────────╮'));
-  console.log(colors.primary('  │') + colors.text('       Claude Code Tutor           ') + colors.primary('│'));
+  console.log(colors.primary('  │') + colors.text('     🐢 Claude Code Tutor          ') + colors.primary('│'));
   console.log(colors.primary('  │') + colors.dim('   Learn to code like an engineer  ') + colors.primary('│'));
   console.log(colors.primary('  ╰───────────────────────────────────╯'));
   console.log();
@@ -690,4 +691,184 @@ export function getTypingAccuracy(userInput: string): number {
   }
 
   return Math.round((correct / expectedText.length) * 100);
+}
+
+// ============================================
+// TYPER SHARK - REAL-TIME TYPING FEEDBACK
+// ============================================
+
+/**
+ * Display Typer Shark style target line with real-time coloring
+ * - Light yellow: untyped characters
+ * - Green: correctly typed characters
+ * Characters only turn green when typed correctly in sequence
+ */
+export function displayTyperSharkTarget(expected: string, correctCount: number): void {
+  if (!process.stdout.isTTY) return;
+
+  let output = '  ';
+  for (let i = 0; i < expected.length; i++) {
+    if (i < correctCount) {
+      // Correctly typed - green
+      output += colors.success(expected[i]);
+    } else {
+      // Not yet typed or wrong - light yellow
+      output += colors.tan(expected[i]);
+    }
+  }
+
+  // Clear line and write target
+  process.stdout.write('\r\x1B[K' + output);
+}
+
+/**
+ * Display the input line below the target
+ */
+export function displayTyperSharkInput(input: string, prompt: string = '› '): void {
+  if (!process.stdout.isTTY) return;
+
+  process.stdout.write('\n' + colors.primary(prompt) + input);
+}
+
+/**
+ * Redraw both target and input lines for Typer Shark mode
+ */
+export function redrawTyperShark(expected: string, input: string, correctCount: number): void {
+  if (!process.stdout.isTTY) return;
+
+  // Move up one line, clear, draw target
+  process.stdout.write('\x1B[1A\r\x1B[K');
+
+  let targetOutput = '  ';
+  for (let i = 0; i < expected.length; i++) {
+    if (i < correctCount) {
+      targetOutput += colors.success(expected[i]);
+    } else {
+      targetOutput += colors.tan(expected[i]);
+    }
+  }
+  process.stdout.write(targetOutput);
+
+  // Move down, clear, draw input
+  process.stdout.write('\n\r\x1B[K');
+  process.stdout.write(colors.primary('› ') + input);
+}
+
+/**
+ * Initialize Typer Shark display with target line and input prompt
+ */
+export function initTyperSharkDisplay(expected: string, explanation?: string): void {
+  console.log();
+  if (explanation) {
+    console.log(colors.dim(`  // ${explanation}`));
+  }
+  // Show target line in yellow (all untyped)
+  console.log('  ' + colors.tan(expected));
+  // Show input prompt
+  process.stdout.write(colors.primary('› '));
+}
+
+// ============================================
+// MULTI-LINE TYPER SHARK - For heredocs
+// ============================================
+
+export interface MultiLineState {
+  currentLineIndex: number;   // Which line we're currently typing
+  completedLines: string[];   // Lines that have been completed
+  currentInput: string;       // Current input for the active line
+  correctCount: number;       // Correct chars in current line
+}
+
+/**
+ * Initialize multi-line Typer Shark display
+ * Shows all lines with comments in gray, code in yellow/green
+ */
+export function initMultiLineTyperShark(
+  lines: Array<{ comment: string; code: string }>,
+  currentLineIndex: number = 0
+): void {
+  // NOTE: No initial console.log() here - redrawMultiLineTyperShark expects
+  // exactly (lines.length * 2 + 2) lines: pairs + blank + prompt
+
+  for (let i = 0; i < lines.length; i++) {
+    const { comment, code } = lines[i];
+
+    // Show comment in gray
+    console.log(colors.dim(`  // ${comment}`));
+
+    // Show code line - green if completed, yellow if current/pending
+    if (i < currentLineIndex) {
+      // Completed line - all green
+      console.log('  ' + colors.success(code));
+    } else if (i === currentLineIndex) {
+      // Current line - yellow (will be tracked)
+      console.log('  ' + colors.tan(code));
+    } else {
+      // Future line - dim yellow
+      console.log('  ' + colors.dim(code));
+    }
+  }
+
+  console.log();
+  // Show input prompt
+  process.stdout.write(colors.primary('› '));
+}
+
+/**
+ * Redraw multi-line Typer Shark display
+ * Moves cursor up, redraws all lines, then input
+ */
+export function redrawMultiLineTyperShark(
+  lines: Array<{ comment: string; code: string }>,
+  currentLineIndex: number,
+  currentInput: string,
+  correctCount: number
+): void {
+  if (!process.stdout.isTTY) return;
+
+  // Calculate how many lines to move up
+  // Each line pair is 2 lines (comment + code), plus 1 for blank line, plus 1 for input
+  const totalDisplayLines = lines.length * 2 + 2;
+
+  // Move cursor up to top of display
+  process.stdout.write(`\x1B[${totalDisplayLines}A`);
+
+  // Redraw each line pair
+  for (let i = 0; i < lines.length; i++) {
+    const { comment, code } = lines[i];
+
+    // Clear and draw comment
+    process.stdout.write('\r\x1B[K');
+    process.stdout.write(colors.dim(`  // ${comment}`));
+    process.stdout.write('\n');
+
+    // Clear and draw code
+    process.stdout.write('\r\x1B[K');
+    if (i < currentLineIndex) {
+      // Completed line - all green
+      process.stdout.write('  ' + colors.success(code));
+    } else if (i === currentLineIndex) {
+      // Current line - show typing progress
+      let output = '  ';
+      for (let j = 0; j < code.length; j++) {
+        if (j < correctCount) {
+          output += colors.success(code[j]);
+        } else {
+          output += colors.tan(code[j]);
+        }
+      }
+      process.stdout.write(output);
+    } else {
+      // Future line - dim
+      process.stdout.write('  ' + colors.dim(code));
+    }
+    process.stdout.write('\n');
+  }
+
+  // Blank line
+  process.stdout.write('\r\x1B[K\n');
+
+  // Input prompt with current input
+  process.stdout.write('\r\x1B[K');
+  process.stdout.write(colors.primary('› ') + currentInput);
 }

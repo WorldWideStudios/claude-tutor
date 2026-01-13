@@ -17,7 +17,7 @@ import { initGitRepo } from './git.js';
 import { createCurriculum, getCurrentSegment, isCurriculumComplete } from './curriculum.js';
 import { loadState, saveState, saveCurriculum, loadCurriculum, createInitialState } from './storage.js';
 import { runAgentTurn, createInitialMessages, pruneContextForNewSegment } from './agent.js';
-import { extractExpectedCode, type ExtractedCode } from './input.js';
+import { extractExpectedCode, createTyperSharkInput, createMultiLineTyperSharkInput, createInteractiveSelect, type ExtractedCode } from './input.js';
 import {
   displayWelcome,
   displaySegmentHeader,
@@ -50,7 +50,7 @@ import {
   newLine
 } from './display.js';
 import type { MessageParam } from '@anthropic-ai/sdk/resources/messages';
-import type { Curriculum, TutorState } from './types.js';
+import type { Curriculum, TutorState, LearnerProfile } from './types.js';
 
 // Shell commands that should be executed directly
 const SHELL_COMMANDS = [
@@ -190,7 +190,58 @@ async function startCommand(_projectDir: string): Promise<void> {
       process.exit(1);
     }
 
+    // Project clarification questions (interactive)
+    newLine();
+    displayInfo('Let me understand your project better:');
+    newLine();
+
+    // Question 1: What type of app?
+    const projectType = await createInteractiveSelect(rl, 'What type of application is this?', [
+      { label: 'Command-line tool (CLI)', value: 'cli', description: 'Runs in terminal' },
+      { label: 'Web application', value: 'web', description: 'Runs in browser' },
+      { label: 'API/Backend service', value: 'api', description: 'Server that handles requests' },
+      { label: 'Script/Automation', value: 'script', description: 'Automates a task' }
+    ]);
+
+    newLine();
+
+    // Question 2: What problem does it solve?
+    const projectPurpose = await createInteractiveSelect(rl, 'What will this app help you do?', [
+      { label: 'Organize or track something', value: 'organize', description: 'Lists, todos, logs' },
+      { label: 'Calculate or process data', value: 'calculate', description: 'Math, conversions, analysis' },
+      { label: 'Communicate or share', value: 'communicate', description: 'Messages, notifications' },
+      { label: 'Learn or practice', value: 'learn', description: 'Educational purpose' }
+    ]);
+
+    newLine();
+
+    // Question 3: Key features (free text with suggestions)
+    const projectFeatures = await createInteractiveSelect(rl, 'What\'s the most important feature?', [
+      { label: 'Simple and minimal', value: 'minimal', description: 'Just the basics' },
+      { label: 'Save and load data', value: 'persistence', description: 'Remember between runs' },
+      { label: 'User-friendly output', value: 'ui', description: 'Nice formatting, colors' },
+      { label: 'Multiple commands', value: 'commands', description: 'Different actions to choose' }
+    ]);
+
+    newLine();
+
+    // Final question: Experience level
+    const experienceLevel = await createInteractiveSelect(rl, 'What\'s your coding experience?', [
+      { label: 'Complete beginner', value: 'complete-beginner', description: 'Never coded before' },
+      { label: 'Some experience', value: 'some-experience', description: 'HTML/CSS or another language' },
+      { label: 'Know the basics', value: 'know-basics', description: 'Coded before, new to TypeScript' }
+    ]) as LearnerProfile['experienceLevel'];
+
+    const learnerProfile: LearnerProfile = {
+      experienceLevel,
+      projectIdea: projectName.trim(),
+      projectType,
+      projectPurpose,
+      projectFeatures
+    };
+
     rl.close();
+    newLine();
 
     // Create isolated project directory (security: never use user's cwd)
     const projectDir = createProjectDirectory(projectName.trim());
@@ -210,7 +261,7 @@ async function startCommand(_projectDir: string): Promise<void> {
         // Update spinner to show current step (not print a separate line)
         updateLoadingStatus(step.replace('...', ''));
       }
-    });
+    }, learnerProfile);
     stopLoading();
     const curriculumPath = await saveCurriculum(curriculum);
 
@@ -357,18 +408,40 @@ async function runTutorLoop(curriculum: Curriculum, state: TutorState): Promise<
     process.exit(1);
   }
 
-  // Main conversation loop
-  const promptForInput = (): void => {
-    // Show target line if we have expected code (with gray explanation above)
-    if (currentExpectedCode) {
-      displayTargetLine(currentExpectedCode.code, currentExpectedCode.explanation || undefined);
+  // Helper to get input - uses Typer Shark when expected code exists
+  const getInput = async (): Promise<string> => {
+    // Don't use Typer Shark for heredoc continuation lines
+    if (currentExpectedCode && !heredocState.active) {
+      if (currentExpectedCode.isMultiLine && currentExpectedCode.lines) {
+        // Multi-line Typer Shark for heredocs with interleaved comments
+        const results = await createMultiLineTyperSharkInput(rl, currentExpectedCode.lines);
+        // Clear expected code after input
+        currentExpectedCode = null;
+        // Return all lines joined for command execution
+        return results.join('\n');
+      } else {
+        // Single-line Typer Shark input with real-time character feedback
+        const result = await createTyperSharkInput(rl, currentExpectedCode.code, currentExpectedCode.explanation);
+        // Clear expected code after Typer Shark input (user typed something)
+        currentExpectedCode = null;
+        return result;
+      }
+    } else {
+      // Regular readline input (or heredoc continuation)
+      if (heredocState.active) {
+        displayContinuationPrompt();
+      } else {
+        displayPrompt();
+      }
+      return new Promise((resolve) => {
+        rl.once('line', resolve);
+      });
     }
-    displayPrompt();
   };
 
-  promptForInput();
-
-  rl.on('line', async (input) => {
+  // Main conversation loop
+  while (true) {
+    const input = await getInput();
     // Reset cancel flag
     shouldCancel = false;
 
@@ -412,13 +485,11 @@ async function runTutorLoop(curriculum: Curriculum, state: TutorState): Promise<
           setAgentRunning(false);
           displayError(error.message);
         }
-        promptForInput();
-        return;
+        continue;
       } else {
         // Continue collecting heredoc lines
         heredocState.lines.push(input);
-        displayContinuationPrompt();  // Show continuation prompt
-        return;
+        continue;
       }
     }
 
@@ -445,14 +516,12 @@ async function runTutorLoop(curriculum: Curriculum, state: TutorState): Promise<
           currentExpectedCode = extractExpectedCode(result.lastResponse);
         }
         newLine();
-        promptForInput();
-        return;
+        continue;
       } catch (error: any) {
         stopLoading();
         setAgentRunning(false);
         displayError(error.message);
-        promptForInput();
-        return;
+        continue;
       }
     }
 
@@ -471,8 +540,7 @@ async function runTutorLoop(curriculum: Curriculum, state: TutorState): Promise<
       if (isHeredoc) {
         // Start heredoc mode
         heredocState = { active: true, delimiter, command: userInput, lines: [] };
-        displayContinuationPrompt();  // Show continuation prompt
-        return;
+        continue;
       }
 
       // Regular command - execute it
@@ -580,19 +648,10 @@ async function runTutorLoop(curriculum: Curriculum, state: TutorState): Promise<
         newLine();
       }
 
-      promptForInput();
-
     } catch (error: any) {
       stopLoading();
       setAgentRunning(false);
       displayError(error.message);
-      promptForInput();
     }
-  });
-
-  rl.on('close', async () => {
-    // Save state on exit
-    state.lastAccessedAt = new Date().toISOString();
-    await saveState(state);
-  });
+  }
 }

@@ -1,6 +1,6 @@
 import { v4 as uuid } from 'uuid';
 import Anthropic from '@anthropic-ai/sdk';
-import type { Curriculum, Segment, BuildSegment, RefactorSegment } from './types.js';
+import type { Curriculum, Segment, BuildSegment, RefactorSegment, LearnerProfile } from './types.js';
 
 // Lazy-initialize client
 let client: Anthropic | null = null;
@@ -20,6 +20,36 @@ export interface CurriculumProgress {
 }
 
 /**
+ * Get context strings based on experience level
+ */
+function getExperienceContext(level: LearnerProfile['experienceLevel']): {
+  target: string;
+  pacing: string;
+  complexity: string;
+} {
+  switch (level) {
+    case 'complete-beginner':
+      return {
+        target: 'complete beginners who have never coded before',
+        pacing: 'very slow with lots of explanation for every concept',
+        complexity: 'keep code extremely simple, explain every line'
+      };
+    case 'some-experience':
+      return {
+        target: 'learners with some coding experience (HTML/CSS or another language)',
+        pacing: 'moderate pace, explain TypeScript-specific concepts',
+        complexity: 'can use slightly more advanced patterns'
+      };
+    case 'know-basics':
+      return {
+        target: 'learners who know programming basics but are new to TypeScript',
+        pacing: 'faster pace, focus on TypeScript features and best practices',
+        complexity: 'can use intermediate patterns and type system features'
+      };
+  }
+}
+
+/**
  * Generate a project-specific curriculum using Claude.
  * Claude analyzes the project idea and creates relevant segments.
  */
@@ -27,11 +57,27 @@ export async function createCurriculum(
   projectName: string,
   projectGoal: string,
   workingDirectory: string,
-  progress?: CurriculumProgress
+  progress?: CurriculumProgress,
+  learnerProfile?: LearnerProfile
 ): Promise<Curriculum> {
   const curriculumId = uuid();
 
+  // Customize difficulty based on experience level
+  const experienceContext = learnerProfile ? getExperienceContext(learnerProfile.experienceLevel) : {
+    target: 'complete beginners',
+    pacing: 'very slow with lots of explanation',
+    complexity: 'keep code extremely simple'
+  };
+
   const systemPrompt = `You are a curriculum designer for a coding tutor. Given a project idea, create 4-6 learning segments that build toward the final project.
+
+LEARNER CONTEXT:
+- Target audience: ${experienceContext.target}
+- Pacing: ${experienceContext.pacing}
+- Complexity: ${experienceContext.complexity}
+${learnerProfile?.projectType ? `- Project type: ${learnerProfile.projectType}` : ''}
+${learnerProfile?.projectPurpose ? `- Project purpose: ${learnerProfile.projectPurpose}` : ''}
+${learnerProfile?.projectFeatures ? `- Key feature focus: ${learnerProfile.projectFeatures}` : ''}
 
 RULES:
 - Each segment should teach ONE concept while building toward the project
@@ -40,6 +86,7 @@ RULES:
 - Code must be TypeScript and beginner-friendly
 - Golden code should be SHORT (under 30 lines per segment)
 - File paths should use src/ directory
+- Tailor explanations and pacing to the learner's experience level
 
 OUTPUT FORMAT (JSON only, no markdown):
 {
@@ -69,7 +116,10 @@ OUTPUT FORMAT (JSON only, no markdown):
   const userPrompt = `Create a curriculum for: "${projectGoal}"
 
 Project name: ${projectName}
-Target: Complete beginners learning TypeScript
+${learnerProfile ? `Learner: ${experienceContext.target}
+App type: ${learnerProfile.projectType || 'general'}
+Purpose: ${learnerProfile.projectPurpose || 'learning'}
+Focus: ${learnerProfile.projectFeatures || 'basics'}` : 'Target: Complete beginners learning TypeScript'}
 
 Generate segments that specifically build this project, not generic exercises. Each segment should add real functionality to the project.`;
 
@@ -162,6 +212,7 @@ Generate segments that specifically build this project, not generic exercises. E
       projectGoal,
       workingDirectory,
       segments,
+      learnerProfile,
       createdAt: new Date().toISOString()
     };
   } catch (error: any) {
