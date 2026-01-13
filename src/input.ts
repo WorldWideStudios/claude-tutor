@@ -25,8 +25,74 @@ export interface ExtractedCode {
 }
 
 /**
+ * Generate explanation for a command based on its structure
+ */
+function generateExplanation(command: string): string | null {
+  const parts = command.trim().split(/\s+/);
+  const cmd = parts[0];
+
+  switch (cmd) {
+    case 'mkdir':
+      if (parts.includes('-p')) {
+        return `mkdir = make directory, -p = create parent directories if needed, ${parts[parts.length - 1]} = folder name`;
+      }
+      return `mkdir = make directory, ${parts[parts.length - 1]} = folder name`;
+
+    case 'cat':
+      if (command.includes('<<')) {
+        const fileMatch = command.match(/>\s*(\S+)/);
+        const file = fileMatch ? fileMatch[1] : 'file';
+        return `creates ${file} with the content you type until EOF`;
+      }
+      return `cat = display file contents`;
+
+    case 'touch':
+      return `touch = create empty file or update timestamp`;
+
+    case 'git':
+      const gitCmd = parts[1];
+      switch (gitCmd) {
+        case 'init': return 'initializes a new git repository';
+        case 'add': return parts[2] === '.' ? 'stages all changes for commit' : `stages ${parts[2]} for commit`;
+        case 'commit': return 'saves staged changes with a message';
+        case 'status': return 'shows current state of working directory';
+        case 'log': return 'shows commit history';
+        case 'diff': return 'shows changes not yet staged';
+        case 'push': return 'uploads commits to remote repository';
+        case 'pull': return 'downloads and integrates remote changes';
+        default: return `git ${gitCmd} command`;
+      }
+
+    case 'npm':
+      const npmCmd = parts[1];
+      switch (npmCmd) {
+        case 'init': return 'creates package.json for your project';
+        case 'install': return parts.length > 2 ? `installs ${parts[2]} package` : 'installs all dependencies';
+        case 'run': return `runs the "${parts[2]}" script from package.json`;
+        case 'test': return 'runs your test suite';
+        default: return `npm ${npmCmd} command`;
+      }
+
+    case 'npx':
+      return `npx = run ${parts[1]} without installing globally`;
+
+    case 'node':
+      return `runs ${parts[1]} with Node.js`;
+
+    case 'tsc':
+      return 'compiles TypeScript to JavaScript';
+
+    case 'echo':
+      return 'prints text to the terminal';
+
+    default:
+      return null;
+  }
+}
+
+/**
  * Extract code that user should type from Claude's response
- * Also extracts the explanation (usually in parentheses after the command)
+ * Generates explanations for common commands
  * Looks for patterns like:
  * - Single-line commands (mkdir, cat, git, etc.)
  * - Heredoc content between << 'EOF' and EOF
@@ -37,11 +103,11 @@ export function extractExpectedCode(text: string): ExtractedCode | null {
   // Look for heredoc pattern
   const heredocMatch = text.match(/cat\s+>\s+\S+\s+<<\s*['"]?EOF['"]?\n([\s\S]*?)\nEOF/);
   if (heredocMatch) {
-    // Look for explanation in parentheses near the heredoc
-    const heredocExplanation = findExplanationNear(text, heredocMatch.index || 0);
+    const fileMatch = heredocMatch[0].match(/>\s*(\S+)/);
+    const file = fileMatch ? fileMatch[1] : 'file';
     return {
       code: heredocMatch[0],
-      explanation: heredocExplanation || 'creates a file with the content between the markers'
+      explanation: `creates ${file} with the content between the markers`
     };
   }
 
@@ -51,37 +117,12 @@ export function extractExpectedCode(text: string): ExtractedCode | null {
     const trimmed = line.trim();
     // Match common commands
     if (/^(mkdir|cat|echo|touch|git|npm|npx|node|tsc)\s/.test(trimmed)) {
-      // Look for explanation in the next line (usually in parentheses)
-      let explanation: string | null = null;
-      if (i + 1 < lines.length) {
-        const nextLine = lines[i + 1].trim();
-        // Check if next line is an explanation in parentheses
-        const parenMatch = nextLine.match(/^\((.+)\)$/);
-        if (parenMatch) {
-          explanation = parenMatch[1];
-        }
-      }
-      return { code: trimmed, explanation };
+      return {
+        code: trimmed,
+        explanation: generateExplanation(trimmed)
+      };
     }
   }
-
-  return null;
-}
-
-/**
- * Find explanation text near a given position in the text
- */
-function findExplanationNear(text: string, position: number): string | null {
-  // Look for (explanation) pattern before or after the position
-  const beforeText = text.substring(Math.max(0, position - 200), position);
-  const afterText = text.substring(position, position + 200);
-
-  // Check for explanation in parentheses
-  const beforeMatch = beforeText.match(/\(([^)]{10,100})\)\s*$/);
-  if (beforeMatch) return beforeMatch[1];
-
-  const afterMatch = afterText.match(/^\s*\(([^)]{10,100})\)/);
-  if (afterMatch) return afterMatch[1];
 
   return null;
 }
