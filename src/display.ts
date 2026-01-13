@@ -38,6 +38,7 @@ const symbols = {
 
 // Loading state
 let spinnerInterval: ReturnType<typeof setInterval> | null = null;
+let wordInterval: ReturnType<typeof setInterval> | null = null;
 let spinnerIndex = 0;
 let wordIndex = 0;
 let isLoading = false;
@@ -93,7 +94,7 @@ export function displayWelcome(): void {
 
 /**
  * Start loading animation with fun words
- * Words only change when advanceLoadingWord() is called
+ * Words cycle every 3-5 seconds
  */
 export function startLoading(): void {
   if (isLoading) {
@@ -126,6 +127,20 @@ export function startLoading(): void {
 
     spinnerIndex++;
   }, 100);
+
+  // Cycle words every 3-5 seconds
+  const scheduleNextWord = () => {
+    const delay = 3000 + Math.random() * 2000; // 3-5 seconds
+    wordInterval = setTimeout(() => {
+      if (isLoading && !currentStatus) {
+        wordIndex = (wordIndex + 1) % funWords.length;
+      }
+      if (isLoading) {
+        scheduleNextWord();
+      }
+    }, delay);
+  };
+  scheduleNextWord();
 }
 
 /**
@@ -148,6 +163,10 @@ export function stopLoading(): void {
   if (spinnerInterval) {
     clearInterval(spinnerInterval);
     spinnerInterval = null;
+  }
+  if (wordInterval) {
+    clearTimeout(wordInterval);
+    wordInterval = null;
   }
   if (process.stdout.isTTY) {
     process.stdout.write('\r\x1B[K');

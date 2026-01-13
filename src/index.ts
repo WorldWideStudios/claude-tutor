@@ -46,7 +46,6 @@ import {
   startLoading,
   stopLoading,
   updateLoadingStatus,
-  advanceLoadingWord,
   isLoadingActive,
   newLine
 } from './display.js';
@@ -210,7 +209,6 @@ async function startCommand(_projectDir: string): Promise<void> {
       onStep: (step) => {
         // Update spinner to show current step (not print a separate line)
         updateLoadingStatus(step.replace('...', ''));
-        advanceLoadingWord();
       }
     });
     stopLoading();
@@ -335,10 +333,9 @@ async function runTutorLoop(curriculum: Curriculum, state: TutorState): Promise<
           stopLoading();
           loadingStopped = true;
         }
-        advanceLoadingWord();
         displayTutorText(text);
       },
-      onToolUse: (toolName, status) => { advanceLoadingWord(); displayToolStatus(toolName, status); },
+      onToolUse: (toolName, status) => displayToolStatus(toolName, status),
       onSegmentComplete: (summary) => {
         const nextSegment = getCurrentSegment(curriculum, state.currentSegmentIndex + 1);
         displaySegmentComplete(summary, nextSegment?.title);
@@ -398,8 +395,8 @@ async function runTutorLoop(curriculum: Curriculum, state: TutorState): Promise<
           let loadingStopped = false;
           const result = await runAgentTurn(messageToSend, messages, {
             curriculum, state, segment: segment!, segmentIndex: state.currentSegmentIndex, previousSummary,
-            onText: (text) => { if (!loadingStopped) { stopLoading(); loadingStopped = true; } advanceLoadingWord(); displayTutorText(text); },
-            onToolUse: (toolName, status) => { advanceLoadingWord(); displayToolStatus(toolName, status); },
+            onText: (text) => { if (!loadingStopped) { stopLoading(); loadingStopped = true; } displayTutorText(text); },
+            onToolUse: (toolName, status) => displayToolStatus(toolName, status),
             onSegmentComplete: (summary) => { previousSummary = summary; }
           });
           if (!loadingStopped) stopLoading();
@@ -436,8 +433,8 @@ async function runTutorLoop(curriculum: Curriculum, state: TutorState): Promise<
         let loadingStopped = false;
         const result = await runAgentTurn('(user pressed Enter to continue)', messages, {
           curriculum, state, segment: segment!, segmentIndex: state.currentSegmentIndex, previousSummary,
-          onText: (text) => { if (!loadingStopped) { stopLoading(); loadingStopped = true; } advanceLoadingWord(); displayTutorText(text); },
-          onToolUse: (toolName, status) => { advanceLoadingWord(); displayToolStatus(toolName, status); },
+          onText: (text) => { if (!loadingStopped) { stopLoading(); loadingStopped = true; } displayTutorText(text); },
+          onToolUse: (toolName, status) => displayToolStatus(toolName, status),
           onSegmentComplete: (summary) => { previousSummary = summary; }
         });
         if (!loadingStopped) stopLoading();
@@ -504,10 +501,9 @@ async function runTutorLoop(curriculum: Curriculum, state: TutorState): Promise<
             stopLoading();
             loadingStopped = true;
           }
-          advanceLoadingWord();
           displayTutorText(text);
         },
-        onToolUse: (toolName, status) => { advanceLoadingWord(); displayToolStatus(toolName, status); },
+        onToolUse: (toolName, status) => displayToolStatus(toolName, status),
         onSegmentComplete: (summary) => {
           previousSummary = summary;
         }
@@ -567,10 +563,9 @@ async function runTutorLoop(curriculum: Curriculum, state: TutorState): Promise<
               stopLoading();
               newLoadingStopped = true;
             }
-            advanceLoadingWord();
             displayTutorText(text);
           },
-          onToolUse: (toolName, status) => { advanceLoadingWord(); displayToolStatus(toolName, status); },
+          onToolUse: (toolName, status) => displayToolStatus(toolName, status),
           onSegmentComplete: (summary) => {
             previousSummary = summary;
           }
