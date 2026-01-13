@@ -44,9 +44,12 @@ let isLoading = false;
 let agentRunning = false;
 let currentStatus: string | null = null;
 
-// Cycling words for different modes
-const thinkingWords = ['Thinking', 'Planning', 'Designing'];
-const checkingWords = ['Checking', 'Verifying', 'Validating'];
+// Fun loading words - only advance when something actually happens
+const funWords = [
+  'Wizarding', 'Booping', 'Noodling', 'Vibing', 'Schlepping',
+  'Clauding', 'Scaffolding', 'Stacking', 'Coalescing', 'Brewing',
+  'Conjuring', 'Pondering', 'Manifesting', 'Assembling', 'Crafting'
+];
 
 // Character tracking state
 let expectedText: string | null = null;
@@ -89,10 +92,10 @@ export function displayWelcome(): void {
 }
 
 /**
- * Start loading animation with cycling words
- * Slower animation like snake game
+ * Start loading animation with fun words
+ * Words only change when advanceLoadingWord() is called
  */
-export function startLoading(mode: 'thinking' | 'checking' = 'thinking'): void {
+export function startLoading(): void {
   if (isLoading) {
     stopLoading();
   }
@@ -100,16 +103,15 @@ export function startLoading(mode: 'thinking' | 'checking' = 'thinking'): void {
   isLoading = true;
   agentRunning = true;
   spinnerIndex = 0;
-  wordIndex = 0;
-
-  const words = mode === 'thinking' ? thinkingWords : checkingWords;
+  // Randomize starting word for variety
+  wordIndex = Math.floor(Math.random() * funWords.length);
 
   if (!process.stdout.isTTY) {
-    console.log(colors.dim(`${words[0]}...`));
+    console.log(colors.dim(`${funWords[wordIndex]}...`));
     return;
   }
 
-  // Slower animation - 150ms for snake-like movement
+  // Smooth spinner animation
   spinnerInterval = setInterval(() => {
     if (!isLoading) {
       if (spinnerInterval) clearInterval(spinnerInterval);
@@ -117,18 +119,23 @@ export function startLoading(mode: 'thinking' | 'checking' = 'thinking'): void {
     }
 
     const frame = symbols.spinner[spinnerIndex % symbols.spinner.length];
-    // Use currentStatus if set, otherwise cycle through words
-    const displayText = currentStatus || words[wordIndex % words.length];
+    // Use currentStatus if set, otherwise show current fun word
+    const displayText = currentStatus || funWords[wordIndex % funWords.length];
 
     process.stdout.write(`\r${colors.primaryDim(frame)} ${colors.dim(displayText + '...')}    `);
 
     spinnerIndex++;
+  }, 100);
+}
 
-    // Cycle word every ~10 frames (1.5 seconds) - only when not showing status
-    if (!currentStatus && spinnerIndex % 10 === 0) {
-      wordIndex++;
-    }
-  }, 150);
+/**
+ * Advance to the next fun loading word
+ * Call this when something happens (output prints, step completes, etc.)
+ */
+export function advanceLoadingWord(): void {
+  if (isLoading && !currentStatus) {
+    wordIndex = (wordIndex + 1) % funWords.length;
+  }
 }
 
 /**
