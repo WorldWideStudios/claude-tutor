@@ -31,6 +31,7 @@ const symbols = {
   bullet: '○',
   branch: '├─',
   branchEnd: '└─',
+  branchContinue: '⎿',
   vertical: '│',
   spinner: ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'],
 };
@@ -331,6 +332,57 @@ export function displayCodeWithExplanation(code: string, explanations: string[])
 }
 
 /**
+ * Display a code block with line-by-line explanations
+ * Each line of code is shown in green with its explanation in gray below
+ */
+export function displayCodeBlockWithLineExplanations(
+  lines: Array<{ code: string; explanation: string }>
+): void {
+  console.log();
+  lines.forEach((line, index) => {
+    // Code line in green
+    console.log('  ' + colors.primary(line.code));
+    // Explanation in gray with branch symbol
+    const isLast = index === lines.length - 1;
+    const branchSymbol = isLast ? symbols.branchEnd : symbols.branchContinue;
+    console.log(colors.dim(`  ${branchSymbol}  ${line.explanation}`));
+  });
+  console.log();
+}
+
+/**
+ * Display a heredoc/multi-line code block with block explanations
+ * Shows the full code block in green, then explanations for each section
+ */
+export function displayHeredocWithExplanations(
+  header: string,
+  codeLines: string[],
+  footer: string,
+  blockExplanations: Array<{ section: string; explanation: string }>
+): void {
+  console.log();
+  // Header (e.g., cat > src/index.ts << 'EOF') in green
+  console.log('  ' + colors.primary(header));
+
+  // Code content in green
+  codeLines.forEach(line => {
+    console.log('  ' + colors.primary(line));
+  });
+
+  // Footer (EOF) in green
+  console.log('  ' + colors.primary(footer));
+
+  // Block explanations in gray
+  console.log();
+  blockExplanations.forEach((block, index) => {
+    const isLast = index === blockExplanations.length - 1;
+    const branchSymbol = isLast ? symbols.branchEnd : symbols.branchContinue;
+    console.log(colors.dim(`  ${branchSymbol}  ${block.section}: ${block.explanation}`));
+  });
+  console.log();
+}
+
+/**
  * Display segment completion
  */
 export function displaySegmentComplete(summary: string, nextSegmentTitle?: string): void {
@@ -499,12 +551,30 @@ export function displayTypingProgress(userInput: string): void {
 
 /**
  * Display target code line that user should type
+ * Command is shown in green, explanation in gray with branch symbol
  */
-export function displayTargetLine(line: string): void {
+export function displayTargetLine(line: string, explanation?: string): void {
   setExpectedText(line);
   console.log();
-  console.log(colors.dim('  Type this:'));
-  console.log(colors.dim('  target: ') + colors.dim(line));
+  // Main command in green to stand out
+  console.log('  ' + colors.primary(line));
+  // Helper text in gray with branch symbol
+  if (explanation) {
+    console.log(colors.dim(`  ${symbols.branchContinue}  ${explanation}`));
+  }
+  console.log();
+}
+
+/**
+ * Display a command with explanation underneath
+ * Used for step-by-step instructions
+ */
+export function displayCommandInstruction(command: string, explanation: string): void {
+  console.log();
+  // Main command in green
+  console.log('  ' + colors.primary(command));
+  // Explanation in gray with branch symbol
+  console.log(colors.dim(`  ${symbols.branchContinue}  ${explanation}`));
   console.log();
 }
 
