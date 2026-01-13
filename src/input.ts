@@ -17,27 +17,71 @@ const colors = {
 };
 
 /**
+ * Result of extracting code from Claude's response
+ */
+export interface ExtractedCode {
+  code: string;
+  explanation: string | null;
+}
+
+/**
  * Extract code that user should type from Claude's response
+ * Also extracts the explanation (usually in parentheses after the command)
  * Looks for patterns like:
  * - Single-line commands (mkdir, cat, git, etc.)
  * - Heredoc content between << 'EOF' and EOF
  */
-export function extractExpectedCode(text: string): string | null {
+export function extractExpectedCode(text: string): ExtractedCode | null {
+  const lines = text.split('\n');
+
   // Look for heredoc pattern
   const heredocMatch = text.match(/cat\s+>\s+\S+\s+<<\s*['"]?EOF['"]?\n([\s\S]*?)\nEOF/);
   if (heredocMatch) {
-    return heredocMatch[0]; // Return full heredoc command
+    // Look for explanation in parentheses near the heredoc
+    const heredocExplanation = findExplanationNear(text, heredocMatch.index || 0);
+    return {
+      code: heredocMatch[0],
+      explanation: heredocExplanation || 'creates a file with the content between the markers'
+    };
   }
 
   // Look for single commands on their own line
-  const lines = text.split('\n');
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const trimmed = line.trim();
     // Match common commands
     if (/^(mkdir|cat|echo|touch|git|npm|npx|node|tsc)\s/.test(trimmed)) {
-      return trimmed;
+      // Look for explanation in the next line (usually in parentheses)
+      let explanation: string | null = null;
+      if (i + 1 < lines.length) {
+        const nextLine = lines[i + 1].trim();
+        // Check if next line is an explanation in parentheses
+        const parenMatch = nextLine.match(/^\((.+)\)$/);
+        if (parenMatch) {
+          explanation = parenMatch[1];
+        }
+      }
+      return { code: trimmed, explanation };
     }
   }
+
+  return null;
+}
+
+/**
+ * Find explanation text near a given position in the text
+ */
+function findExplanationNear(text: string, position: number): string | null {
+  // Look for (explanation) pattern before or after the position
+  const beforeText = text.substring(Math.max(0, position - 200), position);
+  const afterText = text.substring(position, position + 200);
+
+  // Check for explanation in parentheses
+  const beforeMatch = beforeText.match(/\(([^)]{10,100})\)\s*$/);
+  if (beforeMatch) return beforeMatch[1];
+
+  const afterMatch = afterText.match(/^\s*\(([^)]{10,100})\)/);
+  if (afterMatch) return afterMatch[1];
 
   return null;
 }
@@ -132,7 +176,7 @@ function calculateAccuracy(input: string, expected: string): number {
 /**
  * Parse Claude's response to find code blocks and track them
  */
-export function shouldTrackInput(claudeResponse: string): string | null {
+export function shouldTrackInput(claudeResponse: string): ExtractedCode | null {
   // Extract the last code/command Claude showed
   return extractExpectedCode(claudeResponse);
 }

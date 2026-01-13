@@ -17,7 +17,7 @@ import { initGitRepo } from './git.js';
 import { createCurriculum, getCurrentSegment, isCurriculumComplete } from './curriculum.js';
 import { loadState, saveState, saveCurriculum, loadCurriculum, createInitialState } from './storage.js';
 import { runAgentTurn, createInitialMessages, pruneContextForNewSegment } from './agent.js';
-import { extractExpectedCode } from './input.js';
+import { extractExpectedCode, type ExtractedCode } from './input.js';
 import {
   displayWelcome,
   displaySegmentHeader,
@@ -202,9 +202,14 @@ async function startCommand(_projectDir: string): Promise<void> {
       process.exit(1);
     }
 
-    // Create curriculum
+    // Create curriculum with streaming progress
     startLoading('thinking');
-    const curriculum = await createCurriculum(projectName.trim(), projectName.trim(), projectDir);
+    const curriculum = await createCurriculum(projectName.trim(), projectName.trim(), projectDir, {
+      onStep: (step) => {
+        // Show each step as it happens
+        displayStep(step);
+      }
+    });
     const curriculumPath = await saveCurriculum(curriculum);
     stopLoading();
 
@@ -278,7 +283,7 @@ async function resumeCommand(): Promise<void> {
 async function runTutorLoop(curriculum: Curriculum, state: TutorState): Promise<void> {
   let messages: MessageParam[] = createInitialMessages();
   let previousSummary: string | undefined;
-  let currentExpectedCode: string | null = null; // Track what user should type
+  let currentExpectedCode: ExtractedCode | null = null; // Track what user should type with explanation
 
   const rl = readline.createInterface({
     input: process.stdin,
@@ -353,9 +358,9 @@ async function runTutorLoop(curriculum: Curriculum, state: TutorState): Promise<
 
   // Main conversation loop
   const promptForInput = (): void => {
-    // Show target line if we have expected code
+    // Show target line if we have expected code (with gray explanation above)
     if (currentExpectedCode) {
-      displayTargetLine(currentExpectedCode);
+      displayTargetLine(currentExpectedCode.code, currentExpectedCode.explanation || undefined);
     }
     displayPrompt();
   };

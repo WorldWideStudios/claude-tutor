@@ -12,13 +12,22 @@ function getClient(): Anthropic {
 }
 
 /**
+ * Progress callback for curriculum creation
+ */
+export interface CurriculumProgress {
+  onStep: (step: string) => void;
+  onThinking?: (text: string) => void;
+}
+
+/**
  * Generate a project-specific curriculum using Claude.
  * Claude analyzes the project idea and creates relevant segments.
  */
 export async function createCurriculum(
   projectName: string,
   projectGoal: string,
-  workingDirectory: string
+  workingDirectory: string,
+  progress?: CurriculumProgress
 ): Promise<Curriculum> {
   const curriculumId = uuid();
 
@@ -65,20 +74,49 @@ Target: Complete beginners learning TypeScript
 Generate segments that specifically build this project, not generic exercises. Each segment should add real functionality to the project.`;
 
   try {
-    const response = await getClient().messages.create({
+    // Show progress steps
+    progress?.onStep('Analyzing project idea...');
+
+    // Use streaming to show progress
+    const stream = getClient().messages.stream({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4096,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }]
     });
 
-    const textBlock = response.content.find(b => b.type === 'text');
-    if (!textBlock || textBlock.type !== 'text') {
-      throw new Error('No text response from Claude');
-    }
+    let fullText = '';
+    let hasShownDesigning = false;
+    let hasShownStructuring = false;
+    let hasShownFinalizing = false;
+
+    // Stream events for progress
+    stream.on('text', (text) => {
+      fullText += text;
+      progress?.onThinking?.(text);
+
+      // Show progress based on content milestones
+      if (!hasShownDesigning && fullText.includes('"segments"')) {
+        progress?.onStep('Designing learning segments...');
+        hasShownDesigning = true;
+      }
+      if (!hasShownStructuring && fullText.includes('"checkpoints"')) {
+        progress?.onStep('Structuring checkpoints...');
+        hasShownStructuring = true;
+      }
+      if (!hasShownFinalizing && fullText.includes('"goldenCode"')) {
+        progress?.onStep('Creating code examples...');
+        hasShownFinalizing = true;
+      }
+    });
+
+    // Wait for completion
+    await stream.finalMessage();
+
+    progress?.onStep('Building curriculum...');
 
     // Clean markdown fences from response (LLMs often wrap JSON in ```json ... ```)
-    let jsonText = textBlock.text.trim();
+    let jsonText = fullText.trim();
 
     // Remove markdown code fences
     if (jsonText.startsWith('```')) {
