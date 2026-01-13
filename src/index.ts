@@ -135,6 +135,40 @@ program.parse();
 async function startCommand(_projectDir: string): Promise<void> {
   displayWelcome();
 
+  // Check for existing project first
+  const existingState = await loadState();
+  if (existingState && existingState.curriculumPath) {
+    const existingCurriculum = await loadCurriculum(existingState.curriculumPath);
+    if (existingCurriculum && !isCurriculumComplete(existingCurriculum, existingState.completedSegments)) {
+      // There's an active project - ask if they want to resume
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+      });
+
+      const progress = `${existingState.completedSegments.length}/${existingCurriculum.segments.length}`;
+      displayInfo(`Found existing project: "${existingCurriculum.projectName}" (${progress} complete)`);
+      newLine();
+
+      const answer = await new Promise<string>((resolve) => {
+        displayQuestionPrompt('Resume this project? (y/n)');
+        rl.once('line', resolve);
+      });
+
+      if (answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes' || answer === '') {
+        rl.close();
+        // Resume the existing project
+        displayResume(existingCurriculum, existingState);
+        await runTutorLoop(existingCurriculum, existingState);
+        return;
+      }
+
+      rl.close();
+      displayInfo('Starting new project...');
+      newLine();
+    }
+  }
+
   // Get project details from user first
   const rl = readline.createInterface({
     input: process.stdin,
