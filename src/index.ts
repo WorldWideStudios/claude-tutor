@@ -45,6 +45,7 @@ import {
   resetStreamState,
   startLoading,
   stopLoading,
+  updateLoadingStatus,
   isLoadingActive,
   newLine
 } from './display.js';
@@ -206,12 +207,12 @@ async function startCommand(_projectDir: string): Promise<void> {
     startLoading('thinking');
     const curriculum = await createCurriculum(projectName.trim(), projectName.trim(), projectDir, {
       onStep: (step) => {
-        // Show each step as it happens
-        displayStep(step);
+        // Update spinner to show current step (not print a separate line)
+        updateLoadingStatus(step.replace('...', ''));
       }
     });
-    const curriculumPath = await saveCurriculum(curriculum);
     stopLoading();
+    const curriculumPath = await saveCurriculum(curriculum);
 
     // Initialize Git (silent)
     const gitResult = initGitRepo(projectDir);

@@ -86,27 +86,19 @@ Generate segments that specifically build this project, not generic exercises. E
     });
 
     let fullText = '';
-    let hasShownDesigning = false;
-    let hasShownStructuring = false;
-    let hasShownFinalizing = false;
+    let segmentCount = 0;
+    let lastSegmentCount = 0;
 
-    // Stream events for progress
+    // Stream events for progress - track actual segment generation
     stream.on('text', (text) => {
       fullText += text;
       progress?.onThinking?.(text);
 
-      // Show progress based on content milestones
-      if (!hasShownDesigning && fullText.includes('"segments"')) {
-        progress?.onStep('Designing learning segments...');
-        hasShownDesigning = true;
-      }
-      if (!hasShownStructuring && fullText.includes('"checkpoints"')) {
-        progress?.onStep('Structuring checkpoints...');
-        hasShownStructuring = true;
-      }
-      if (!hasShownFinalizing && fullText.includes('"goldenCode"')) {
-        progress?.onStep('Creating code examples...');
-        hasShownFinalizing = true;
+      // Count segments being generated (more accurate progress)
+      const newSegmentCount = (fullText.match(/"type":\s*"(build|refactor)"/g) || []).length;
+      if (newSegmentCount > lastSegmentCount) {
+        lastSegmentCount = newSegmentCount;
+        progress?.onStep(`Creating segment ${newSegmentCount}...`);
       }
     });
 
