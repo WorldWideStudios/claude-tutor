@@ -40,8 +40,7 @@ import {
   displayTargetLine,
   clearExpectedText,
   checkTypingComplete,
-  startPlanningWithSteps,
-  stopPlanningSteps,
+  displayToolStatus,
   setAgentRunning,
   resetStreamState,
   startLoading,
@@ -203,18 +202,11 @@ async function startCommand(_projectDir: string): Promise<void> {
       process.exit(1);
     }
 
-    // Create curriculum with planning steps
-    startPlanningWithSteps([
-      'Analyzing project requirements...',
-      'Designing learning segments...',
-      'Creating code exercises...',
-      'Building curriculum structure...'
-    ]);
+    // Create curriculum
     startLoading('thinking');
     const curriculum = await createCurriculum(projectName.trim(), projectName.trim(), projectDir);
     const curriculumPath = await saveCurriculum(curriculum);
     stopLoading();
-    stopPlanningSteps();
 
     // Initialize Git (silent)
     const gitResult = initGitRepo(projectDir);
@@ -337,6 +329,7 @@ async function runTutorLoop(curriculum: Curriculum, state: TutorState): Promise<
         }
         displayTutorText(text);
       },
+      onToolUse: (toolName, status) => displayToolStatus(toolName, status),
       onSegmentComplete: (summary) => {
         const nextSegment = getCurrentSegment(curriculum, state.currentSegmentIndex + 1);
         displaySegmentComplete(summary, nextSegment?.title);
@@ -397,6 +390,7 @@ async function runTutorLoop(curriculum: Curriculum, state: TutorState): Promise<
           const result = await runAgentTurn(messageToSend, messages, {
             curriculum, state, segment: segment!, segmentIndex: state.currentSegmentIndex, previousSummary,
             onText: (text) => { if (!loadingStopped) { stopLoading(); loadingStopped = true; } displayTutorText(text); },
+            onToolUse: (toolName, status) => displayToolStatus(toolName, status),
             onSegmentComplete: (summary) => { previousSummary = summary; }
           });
           if (!loadingStopped) stopLoading();
@@ -434,6 +428,7 @@ async function runTutorLoop(curriculum: Curriculum, state: TutorState): Promise<
         const result = await runAgentTurn('(user pressed Enter to continue)', messages, {
           curriculum, state, segment: segment!, segmentIndex: state.currentSegmentIndex, previousSummary,
           onText: (text) => { if (!loadingStopped) { stopLoading(); loadingStopped = true; } displayTutorText(text); },
+          onToolUse: (toolName, status) => displayToolStatus(toolName, status),
           onSegmentComplete: (summary) => { previousSummary = summary; }
         });
         if (!loadingStopped) stopLoading();
@@ -502,6 +497,7 @@ async function runTutorLoop(curriculum: Curriculum, state: TutorState): Promise<
           }
           displayTutorText(text);
         },
+        onToolUse: (toolName, status) => displayToolStatus(toolName, status),
         onSegmentComplete: (summary) => {
           previousSummary = summary;
         }
@@ -563,6 +559,7 @@ async function runTutorLoop(curriculum: Curriculum, state: TutorState): Promise<
             }
             displayTutorText(text);
           },
+          onToolUse: (toolName, status) => displayToolStatus(toolName, status),
           onSegmentComplete: (summary) => {
             previousSummary = summary;
           }

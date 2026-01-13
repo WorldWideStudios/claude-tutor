@@ -42,6 +42,7 @@ let spinnerIndex = 0;
 let wordIndex = 0;
 let isLoading = false;
 let agentRunning = false;
+let currentStatus: string | null = null;
 
 // Cycling words for different modes
 const thinkingWords = ['Thinking', 'Planning', 'Designing'];
@@ -116,14 +117,15 @@ export function startLoading(mode: 'thinking' | 'checking' = 'thinking'): void {
     }
 
     const frame = symbols.spinner[spinnerIndex % symbols.spinner.length];
-    const word = words[wordIndex % words.length];
+    // Use currentStatus if set, otherwise cycle through words
+    const displayText = currentStatus || words[wordIndex % words.length];
 
-    process.stdout.write(`\r${colors.primaryDim(frame)} ${colors.dim(word + '...')}    `);
+    process.stdout.write(`\r${colors.primaryDim(frame)} ${colors.dim(displayText + '...')}    `);
 
     spinnerIndex++;
 
-    // Cycle word every ~10 frames (1.5 seconds)
-    if (spinnerIndex % 10 === 0) {
+    // Cycle word every ~10 frames (1.5 seconds) - only when not showing status
+    if (!currentStatus && spinnerIndex % 10 === 0) {
       wordIndex++;
     }
   }, 150);
@@ -135,12 +137,44 @@ export function startLoading(mode: 'thinking' | 'checking' = 'thinking'): void {
 export function stopLoading(): void {
   isLoading = false;
   agentRunning = false;
+  currentStatus = null;
   if (spinnerInterval) {
     clearInterval(spinnerInterval);
     spinnerInterval = null;
   }
   if (process.stdout.isTTY) {
     process.stdout.write('\r\x1B[K');
+  }
+}
+
+/**
+ * Update the loading status text (e.g., "Verifying syntax...")
+ * This updates the spinner line with what's actually happening
+ */
+export function updateLoadingStatus(status: string): void {
+  currentStatus = status;
+  // The spinner interval will pick this up on next frame
+}
+
+/**
+ * Display a tool status line (used when a tool starts/ends)
+ */
+export function displayToolStatus(toolName: string, status: 'start' | 'end'): void {
+  if (!process.stdout.isTTY) {
+    if (status === 'start') {
+      console.log(colors.dim(`  ${symbols.arrow} ${toolName}...`));
+    }
+    return;
+  }
+
+  if (status === 'start') {
+    // Update the loading spinner to show the tool name
+    currentStatus = toolName;
+  } else {
+    // Tool finished - show checkmark briefly then clear
+    process.stdout.write('\r\x1B[K');
+    process.stdout.write(`${colors.success(symbols.success)} ${colors.dim(toolName)}\n`);
+    currentStatus = null;
   }
 }
 
@@ -551,30 +585,30 @@ export function displayTypingProgress(userInput: string): void {
 
 /**
  * Display target code line that user should type
- * Command is shown in green, explanation in gray with branch symbol
+ * Comment explanation in gray above, command in green below (like real code)
  */
 export function displayTargetLine(line: string, explanation?: string): void {
   setExpectedText(line);
   console.log();
+  // Explanation as a comment above (gray)
+  if (explanation) {
+    console.log(colors.dim(`  // ${explanation}`));
+  }
   // Main command in green to stand out
   console.log('  ' + colors.primary(line));
-  // Helper text in gray with branch symbol
-  if (explanation) {
-    console.log(colors.dim(`  ${symbols.branchContinue}  ${explanation}`));
-  }
   console.log();
 }
 
 /**
- * Display a command with explanation underneath
- * Used for step-by-step instructions
+ * Display a command with explanation above
+ * Uses coding convention: comment above, code below
  */
 export function displayCommandInstruction(command: string, explanation: string): void {
   console.log();
+  // Explanation as a comment above (gray)
+  console.log(colors.dim(`  // ${explanation}`));
   // Main command in green
   console.log('  ' + colors.primary(command));
-  // Explanation in gray with branch symbol
-  console.log(colors.dim(`  ${symbols.branchContinue}  ${explanation}`));
   console.log();
 }
 

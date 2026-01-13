@@ -208,18 +208,28 @@ export interface AgentOptions {
   segmentIndex: number;
   previousSummary?: string;
   onText: (text: string) => void;
+  onToolUse?: (toolName: string, status: 'start' | 'end') => void;
   onSegmentComplete: (summary: string) => void;
 }
 
+// Human-readable tool names for status display
+const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  'verify_syntax': 'Verifying syntax',
+  'conduct_code_review': 'Reviewing code',
+  'run_git_command': 'Running git',
+  'mark_segment_complete': 'Completing segment',
+  'read_file': 'Reading file'
+};
+
 /**
- * Run the tutor agent for a single turn
+ * Run the tutor agent for a single turn with streaming
  */
 export async function runAgentTurn(
   userMessage: string,
   messages: MessageParam[],
   options: AgentOptions
 ): Promise<{ messages: MessageParam[]; segmentCompleted: boolean; summary?: string; lastResponse?: string }> {
-  const { curriculum, state, segment, segmentIndex, previousSummary, onText, onSegmentComplete } = options;
+  const { curriculum, state, segment, segmentIndex, previousSummary, onText, onToolUse, onSegmentComplete } = options;
 
   // Add user message
   messages.push({ role: 'user', content: userMessage });
@@ -232,7 +242,8 @@ export async function runAgentTurn(
 
   // Agent loop - continue until no more tool calls
   while (true) {
-    const response = await getClient().messages.create({
+    // Use streaming API
+    const stream = getClient().messages.stream({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 2048,
       system: systemPrompt,
@@ -240,52 +251,64 @@ export async function runAgentTurn(
       messages
     });
 
-    // Process response content
+    // Track content blocks as they stream
     const assistantContent: ContentBlock[] = [];
-    let hasToolUse = false;
+    let currentToolName: string | null = null;
 
-    for (const block of response.content) {
+    // Process stream events
+    stream.on('text', (text) => {
+      onText(text);
+      lastResponseText += text;
+    });
+
+    stream.on('contentBlock', (block) => {
       assistantContent.push(block);
 
-      if (block.type === 'text') {
-        onText(block.text);
-        lastResponseText += block.text; // Track for expected code extraction
-      } else if (block.type === 'tool_use') {
-        hasToolUse = true;
+      // Notify when tool use starts
+      if (block.type === 'tool_use' && onToolUse) {
+        currentToolName = block.name;
+        onToolUse(TOOL_DISPLAY_NAMES[block.name] || block.name, 'start');
       }
-    }
+    });
+
+    // Wait for stream to complete
+    const response = await stream.finalMessage();
 
     // Add assistant message
     messages.push({ role: 'assistant', content: assistantContent });
 
-    // If no tool use, we're done
-    if (!hasToolUse || response.stop_reason === 'end_turn') {
+    // Check for tool use
+    const toolUseBlocks = assistantContent.filter((b): b is ToolUseBlock => b.type === 'tool_use');
+
+    if (toolUseBlocks.length === 0 || response.stop_reason === 'end_turn') {
       break;
     }
 
     // Handle tool calls
     const toolResults: { type: 'tool_result'; tool_use_id: string; content: string }[] = [];
 
-    for (const block of response.content) {
-      if (block.type === 'tool_use') {
-        const toolBlock = block as ToolUseBlock;
-        const { result, segmentCompleted: completed, summary } = handleToolCall(
-          toolBlock.name,
-          toolBlock.input as ToolInput,
-          curriculum,
-          state
-        );
+    for (const toolBlock of toolUseBlocks) {
+      const { result, segmentCompleted: completed, summary } = handleToolCall(
+        toolBlock.name,
+        toolBlock.input as ToolInput,
+        curriculum,
+        state
+      );
 
-        toolResults.push({
-          type: 'tool_result',
-          tool_use_id: toolBlock.id,
-          content: result
-        });
+      // Notify tool end
+      if (onToolUse) {
+        onToolUse(TOOL_DISPLAY_NAMES[toolBlock.name] || toolBlock.name, 'end');
+      }
 
-        if (completed) {
-          segmentCompleted = true;
-          segmentSummary = summary;
-        }
+      toolResults.push({
+        type: 'tool_result',
+        tool_use_id: toolBlock.id,
+        content: result
+      });
+
+      if (completed) {
+        segmentCompleted = true;
+        segmentSummary = summary;
       }
     }
 
