@@ -499,9 +499,11 @@ export function displayPrompt(): void {
 /**
  * Draw the bottom bar after input is complete
  * This should be called after getting input to close the entry field
+ * Includes blank line below for future helper text and to lift entry area from bottom
  */
 export function displayBottomBar(): void {
   console.log(drawBar());
+  console.log(); // Blank line below for future helper text
 }
 
 /**
@@ -781,9 +783,11 @@ export function initTyperSharkDisplay(expected: string, explanation?: string): v
 
 /**
  * Finish Typer Shark display with bottom gray line
+ * Includes blank line below for future helper text and to lift entry area from bottom
  */
 export function finishTyperSharkDisplay(): void {
   console.log(drawBar());
+  console.log(); // Blank line below for future helper text
 }
 
 // ============================================
