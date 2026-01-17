@@ -765,6 +765,20 @@ export function redrawTyperShark(expected: string, input: string, correctCount: 
 }
 
 /**
+ * Clear previous lines to make room for Typer Shark display
+ * This prevents showing duplicate code (raw streamed + formatted)
+ */
+export function clearForTyperShark(linesToClear: number = 0): void {
+  if (!process.stdout.isTTY || linesToClear <= 0) return;
+
+  // Move up and clear each line
+  for (let i = 0; i < linesToClear; i++) {
+    process.stdout.write('\x1B[1A'); // Move up one line
+    process.stdout.write('\r\x1B[K'); // Clear line
+  }
+}
+
+/**
  * Initialize Typer Shark display with target line and input prompt
  * Includes gray lines above and below to create an entry field look
  */
@@ -805,13 +819,19 @@ export interface MultiLineState {
  * Initialize multi-line Typer Shark display
  * Shows all lines with comments in gray, code in yellow/green
  * Includes gray lines above and below to create an entry field look
+ * @param linesToClear - number of previous lines to clear (to remove raw streamed code)
  */
 export function initMultiLineTyperShark(
   lines: Array<{ comment: string; code: string }>,
-  currentLineIndex: number = 0
+  currentLineIndex: number = 0,
+  linesToClear: number = 0
 ): void {
-  // NOTE: redrawMultiLineTyperShark expects exactly (lines.length * 2 + 3) lines:
-  // pairs + gray bar + blank + prompt
+  // Clear the raw streamed code that was displayed before
+  if (linesToClear > 0) {
+    clearForTyperShark(linesToClear);
+  }
+
+  // NOTE: redrawMultiLineTyperShark expects exactly (lines.length * 2 + 2) lines above cursor
 
   for (let i = 0; i < lines.length; i++) {
     const { comment, code } = lines[i];
@@ -852,12 +872,13 @@ export function redrawMultiLineTyperShark(
 ): void {
   if (!process.stdout.isTTY) return;
 
-  // Calculate how many lines to move up
-  // Each line pair is 2 lines (comment + code), plus 1 for gray bar, plus 1 for blank line, plus 1 for input
-  const totalDisplayLines = lines.length * 2 + 3;
+  // Calculate how many lines to move up from current cursor position
+  // After init: cursor is at end of prompt line (no newline after prompt)
+  // Lines above cursor: (lines.length * 2) comment/code pairs + 1 gray bar + 1 blank line = lines.length * 2 + 2
+  const linesToMoveUp = lines.length * 2 + 2;
 
   // Move cursor up to top of display
-  process.stdout.write(`\x1B[${totalDisplayLines}A`);
+  process.stdout.write(`\x1B[${linesToMoveUp}A`);
 
   // Redraw each line pair
   for (let i = 0; i < lines.length; i++) {

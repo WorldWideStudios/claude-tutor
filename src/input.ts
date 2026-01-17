@@ -9,6 +9,7 @@ import {
   initMultiLineTyperShark,
   redrawMultiLineTyperShark,
   finishTyperSharkDisplay,
+  clearForTyperShark,
 } from './display.js';
 import chalk from 'chalk';
 
@@ -640,8 +641,13 @@ export function createMultiLineTyperSharkInput(
       return;
     }
 
-    // Initialize display with all lines
-    initMultiLineTyperShark(lines, 0);
+    // Calculate lines to clear: the raw code was streamed before this
+    // Each line pair = 2 lines (comment + code), plus extra for the heredoc command output
+    // We clear more than needed to ensure no duplication
+    const linesToClear = lines.length * 2 + 5;
+
+    // Initialize display with all lines, clearing the raw streamed code
+    initMultiLineTyperShark(lines, 0, linesToClear);
 
     let currentLineIndex = 0;
     let inputBuffer = '';
