@@ -485,20 +485,23 @@ export function displayInfo(message: string): void {
 
 /**
  * Display input prompt with top/bottom bars
- * ESC hint only shows when agent is running
+ * Creates an entry field look with gray lines above and below the input area
  */
 export function displayPrompt(): void {
   console.log();
-  // Top bar - full width
+  // Top bar - creates upper border of entry field
   console.log(drawBar());
-
-  // Bottom section with conditional ESC hint
-  if (agentRunning) {
-    console.log(colors.muted('esc to stop'));
-  }
 
   // Input prompt
   process.stdout.write(colors.primary(symbols.arrow + ' '));
+}
+
+/**
+ * Draw the bottom bar after input is complete
+ * This should be called after getting input to close the entry field
+ */
+export function displayBottomBar(): void {
+  console.log(drawBar());
 }
 
 /**
@@ -732,12 +735,13 @@ export function displayTyperSharkInput(input: string, prompt: string = '› '): 
 
 /**
  * Redraw both target and input lines for Typer Shark mode
+ * Accounts for the gray bar between target and input
  */
 export function redrawTyperShark(expected: string, input: string, correctCount: number): void {
   if (!process.stdout.isTTY) return;
 
-  // Move up one line, clear, draw target
-  process.stdout.write('\x1B[1A\r\x1B[K');
+  // Move up two lines (over gray bar and target), clear, draw target
+  process.stdout.write('\x1B[2A\r\x1B[K');
 
   let targetOutput = '  ';
   for (let i = 0; i < expected.length; i++) {
@@ -749,6 +753,10 @@ export function redrawTyperShark(expected: string, input: string, correctCount: 
   }
   process.stdout.write(targetOutput);
 
+  // Move down to gray bar line, redraw it
+  process.stdout.write('\n\r\x1B[K');
+  process.stdout.write(drawBar());
+
   // Move down, clear, draw input
   process.stdout.write('\n\r\x1B[K');
   process.stdout.write(colors.primary('› ') + input);
@@ -756,6 +764,7 @@ export function redrawTyperShark(expected: string, input: string, correctCount: 
 
 /**
  * Initialize Typer Shark display with target line and input prompt
+ * Includes gray lines above and below to create an entry field look
  */
 export function initTyperSharkDisplay(expected: string, explanation?: string): void {
   console.log();
@@ -764,8 +773,17 @@ export function initTyperSharkDisplay(expected: string, explanation?: string): v
   }
   // Show target line in yellow (all untyped)
   console.log('  ' + colors.tan(expected));
+  // Top gray line - upper border of entry field
+  console.log(drawBar());
   // Show input prompt
   process.stdout.write(colors.primary('› '));
+}
+
+/**
+ * Finish Typer Shark display with bottom gray line
+ */
+export function finishTyperSharkDisplay(): void {
+  console.log(drawBar());
 }
 
 // ============================================
@@ -782,13 +800,14 @@ export interface MultiLineState {
 /**
  * Initialize multi-line Typer Shark display
  * Shows all lines with comments in gray, code in yellow/green
+ * Includes gray lines above and below to create an entry field look
  */
 export function initMultiLineTyperShark(
   lines: Array<{ comment: string; code: string }>,
   currentLineIndex: number = 0
 ): void {
-  // NOTE: No initial console.log() here - redrawMultiLineTyperShark expects
-  // exactly (lines.length * 2 + 2) lines: pairs + blank + prompt
+  // NOTE: redrawMultiLineTyperShark expects exactly (lines.length * 2 + 3) lines:
+  // pairs + gray bar + blank + prompt
 
   for (let i = 0; i < lines.length; i++) {
     const { comment, code } = lines[i];
@@ -809,6 +828,8 @@ export function initMultiLineTyperShark(
     }
   }
 
+  // Top gray line - upper border of entry field
+  console.log(drawBar());
   console.log();
   // Show input prompt
   process.stdout.write(colors.primary('› '));
@@ -817,6 +838,7 @@ export function initMultiLineTyperShark(
 /**
  * Redraw multi-line Typer Shark display
  * Moves cursor up, redraws all lines, then input
+ * Accounts for the gray bar between code lines and input
  */
 export function redrawMultiLineTyperShark(
   lines: Array<{ comment: string; code: string }>,
@@ -827,8 +849,8 @@ export function redrawMultiLineTyperShark(
   if (!process.stdout.isTTY) return;
 
   // Calculate how many lines to move up
-  // Each line pair is 2 lines (comment + code), plus 1 for blank line, plus 1 for input
-  const totalDisplayLines = lines.length * 2 + 2;
+  // Each line pair is 2 lines (comment + code), plus 1 for gray bar, plus 1 for blank line, plus 1 for input
+  const totalDisplayLines = lines.length * 2 + 3;
 
   // Move cursor up to top of display
   process.stdout.write(`\x1B[${totalDisplayLines}A`);
@@ -864,6 +886,11 @@ export function redrawMultiLineTyperShark(
     }
     process.stdout.write('\n');
   }
+
+  // Gray bar - upper border of entry field
+  process.stdout.write('\r\x1B[K');
+  process.stdout.write(drawBar());
+  process.stdout.write('\n');
 
   // Blank line
   process.stdout.write('\r\x1B[K\n');

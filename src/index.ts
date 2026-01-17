@@ -588,8 +588,11 @@ async function runTutorLoop(curriculum: Curriculum, state: TutorState): Promise<
 
       // Check if segment was completed
       if (result.segmentCompleted) {
-        // Update state
+        // Update state - properly mark segment complete with ID tracking
+        const completedSegmentId = segment!.id;
+        state.completedSegments = [...state.completedSegments, completedSegmentId];
         state.currentSegmentIndex++;
+        state.previousSegmentSummary = result.summary;
         await saveState(state);
 
         // Check if curriculum is complete

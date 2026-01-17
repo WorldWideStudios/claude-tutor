@@ -8,6 +8,7 @@ import {
   redrawTyperShark,
   initMultiLineTyperShark,
   redrawMultiLineTyperShark,
+  finishTyperSharkDisplay,
 } from './display.js';
 import chalk from 'chalk';
 
@@ -270,6 +271,8 @@ function generateExplanation(command: string): string | null {
  * Looks for patterns like:
  * - Single-line commands (mkdir, cat, git, etc.)
  * - Interleaved heredoc format (// comment + code line pairs)
+ * - Code blocks with backticks
+ * - Any line that looks like an executable command
  */
 export function extractExpectedCode(text: string): ExtractedCode | null {
   const lines = text.split('\n');
@@ -342,17 +345,69 @@ export function extractExpectedCode(text: string): ExtractedCode | null {
     };
   }
 
+  // Look for code blocks with backticks (```command``` or `command`)
+  const codeBlockMatch = text.match(/```(?:bash|sh|shell|typescript|ts|javascript|js)?\n?([\s\S]*?)```/);
+  if (codeBlockMatch) {
+    const codeContent = codeBlockMatch[1].trim();
+    // If it's a single line, treat as single command
+    if (!codeContent.includes('\n')) {
+      return {
+        code: codeContent,
+        explanation: generateExplanation(codeContent),
+        isMultiLine: false
+      };
+    }
+  }
+
+  // Look for inline code with single backticks
+  const inlineCodeMatch = text.match(/`([^`\n]+)`/);
+  if (inlineCodeMatch) {
+    const code = inlineCodeMatch[1].trim();
+    // Only use if it looks like a command
+    if (/^(mkdir|cat|echo|touch|git|npm|npx|node|tsc|cd|ls|pwd|chmod|rm|mv|cp)\s/.test(code)) {
+      return {
+        code: code,
+        explanation: generateExplanation(code),
+        isMultiLine: false
+      };
+    }
+  }
+
   // Fall back to looking for single commands on their own line
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const trimmed = line.trim();
     // Match common commands (not preceded by //)
-    if (/^(mkdir|cat|echo|touch|git|npm|npx|node|tsc)\s/.test(trimmed)) {
+    if (/^(mkdir|cat|echo|touch|git|npm|npx|node|tsc|cd|ls|pwd|chmod|rm|mv|cp)\s/.test(trimmed)) {
       // Check if previous line was a // comment
       const prevLine = lines[i - 1]?.trim();
       const explanation = prevLine?.startsWith('//')
         ? prevLine.slice(2).trim()
         : generateExplanation(trimmed);
+
+      return {
+        code: trimmed,
+        explanation,
+        isMultiLine: false
+      };
+    }
+  }
+
+  // Last resort: look for any line that looks like it should be typed
+  // This catches things like variable assignments, function calls, etc.
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    // Skip empty lines, comments, and prose
+    if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('#')) continue;
+
+    // Look for lines that look like code (contains = or starts with common patterns)
+    if (trimmed.includes('=') || /^(const|let|var|function|import|export|class|type|interface)\s/.test(trimmed)) {
+      const prevLine = lines[i - 1]?.trim();
+      const explanation = prevLine?.startsWith('//')
+        ? prevLine.slice(2).trim()
+        : 'type this code';
 
       return {
         code: trimmed,
@@ -510,6 +565,7 @@ export function createTyperSharkInput(
         process.stdin.setRawMode(false);
         process.stdin.removeListener('data', handleKeypress);
         console.log(); // New line after input
+        finishTyperSharkDisplay(); // Draw bottom gray line
         resolve(inputBuffer);
         return;
       }
@@ -624,6 +680,7 @@ export function createMultiLineTyperSharkInput(
           process.stdin.setRawMode(false);
           process.stdin.removeListener('data', handleKeypress);
           console.log(); // New line after final input
+          finishTyperSharkDisplay(); // Draw bottom gray line
           console.log(colors.success('✓ All lines entered!'));
           resolve(completedLines);
           return;
