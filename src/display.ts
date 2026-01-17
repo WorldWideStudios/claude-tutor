@@ -80,16 +80,42 @@ export function drawBar(): string {
   return colors.muted('─'.repeat(getWidth()));
 }
 
+// Turtle ASCII art logo (3 lines using half-blocks for proper proportions)
+// ▀ = top half, ▄ = bottom half, █ = full block
+const TURTLE_LOGO = [
+  '     ▄▄▄▄▄  ██▀▄',
+  ' ▄ ▄▀█▀█▀█▀▄▀▀▀▀',
+  '  ▀▀██▀▀██▀▀    ',
+];
+
 /**
- * Display welcome with title box
+ * Display welcome with side-by-side turtle logo and text
+ * Claude Code style: clean, open layout without box borders
  */
-export function displayWelcome(): void {
+export function displayWelcome(currentSkill?: string): void {
   clearScreen();
   console.log();
-  console.log(colors.primary('  ╭───────────────────────────────────╮'));
-  console.log(colors.primary('  │') + colors.text('     🐢 Claude Code Tutor          ') + colors.primary('│'));
-  console.log(colors.primary('  │') + colors.dim('   Learn to code like an engineer  ') + colors.primary('│'));
-  console.log(colors.primary('  ╰───────────────────────────────────╯'));
+
+  const title = 'Claude Code Tutor';
+  const version = 'v0.1.0';
+  const tagline = 'Learn to code like an engineer';
+  const skillLine = currentSkill ? `Learning: ${currentSkill}` : '';
+
+  TURTLE_LOGO.forEach((logoLine, i) => {
+    const coloredLogo = colors.primary(logoLine);  // Use project green
+
+    if (i === 0) {
+      // Title line - bold white + version in gray
+      console.log(coloredLogo + '   ' + chalk.bold.white(title) + ' ' + colors.dim(version));
+    } else if (i === 1) {
+      // Tagline - dim
+      console.log(coloredLogo + '   ' + colors.dim(tagline));
+    } else {
+      // Skill line - dim
+      console.log(coloredLogo + '   ' + colors.dim(skillLine));
+    }
+  });
+
   console.log();
 }
 

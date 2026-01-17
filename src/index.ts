@@ -135,7 +135,7 @@ program.parse();
  * Start a new tutoring project
  */
 async function startCommand(_projectDir: string): Promise<void> {
-  displayWelcome();
+  displayWelcome();  // No skill on initial startup
 
   // Check for existing project first
   const existingState = await loadState();
@@ -149,7 +149,7 @@ async function startCommand(_projectDir: string): Promise<void> {
       });
 
       const progress = `${existingState.currentSegmentIndex}/${existingCurriculum.segments.length}`;
-      displayInfo(`Found existing project: "${existingCurriculum.projectName}" (${progress} complete)`);
+      displayInfo(`Continue project: "${existingCurriculum.projectName}" (${progress} complete)`);
       newLine();
 
       const answer = await new Promise<string>((resolve) => {
