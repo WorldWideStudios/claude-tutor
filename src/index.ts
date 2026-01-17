@@ -32,6 +32,7 @@ import {
   displayInfo,
   displayUserMessage,
   displayQuestionPrompt,
+  closeQuestionPrompt,
   displayCommand,
   displayCommandOutput,
   displayContinuationPrompt,
@@ -51,6 +52,7 @@ import {
 } from './display.js';
 import type { MessageParam } from '@anthropic-ai/sdk/resources/messages';
 import type { Curriculum, TutorState, LearnerProfile } from './types.js';
+import { askClarifyingQuestions } from './questions.js';
 
 // Shell commands that should be executed directly
 const SHELL_COMMANDS = [
@@ -146,7 +148,7 @@ async function startCommand(_projectDir: string): Promise<void> {
         output: process.stdout
       });
 
-      const progress = `${existingState.completedSegments.length}/${existingCurriculum.segments.length}`;
+      const progress = `${existingState.currentSegmentIndex}/${existingCurriculum.segments.length}`;
       displayInfo(`Found existing project: "${existingCurriculum.projectName}" (${progress} complete)`);
       newLine();
 
@@ -178,7 +180,10 @@ async function startCommand(_projectDir: string): Promise<void> {
   const question = (prompt: string): Promise<string> => {
     return new Promise((resolve) => {
       displayQuestionPrompt(prompt);
-      rl.once('line', resolve);
+      rl.once('line', (answer) => {
+        closeQuestionPrompt(prompt, answer);
+        resolve(answer);
+      });
     });
   };
 
@@ -190,55 +195,9 @@ async function startCommand(_projectDir: string): Promise<void> {
       process.exit(1);
     }
 
-    // Project clarification questions (interactive)
-    newLine();
+    // Use dynamic questions based on project idea
     displayInfo('Let me understand your project better:');
-    newLine();
-
-    // Question 1: What type of app?
-    const projectType = await createInteractiveSelect(rl, 'What type of application is this?', [
-      { label: 'Command-line tool (CLI)', value: 'cli', description: 'Runs in terminal' },
-      { label: 'Web application', value: 'web', description: 'Runs in browser' },
-      { label: 'API/Backend service', value: 'api', description: 'Server that handles requests' },
-      { label: 'Script/Automation', value: 'script', description: 'Automates a task' }
-    ]);
-
-    newLine();
-
-    // Question 2: What problem does it solve?
-    const projectPurpose = await createInteractiveSelect(rl, 'What will this app help you do?', [
-      { label: 'Organize or track something', value: 'organize', description: 'Lists, todos, logs' },
-      { label: 'Calculate or process data', value: 'calculate', description: 'Math, conversions, analysis' },
-      { label: 'Communicate or share', value: 'communicate', description: 'Messages, notifications' },
-      { label: 'Learn or practice', value: 'learn', description: 'Educational purpose' }
-    ]);
-
-    newLine();
-
-    // Question 3: Key features (free text with suggestions)
-    const projectFeatures = await createInteractiveSelect(rl, 'What\'s the most important feature?', [
-      { label: 'Simple and minimal', value: 'minimal', description: 'Just the basics' },
-      { label: 'Save and load data', value: 'persistence', description: 'Remember between runs' },
-      { label: 'User-friendly output', value: 'ui', description: 'Nice formatting, colors' },
-      { label: 'Multiple commands', value: 'commands', description: 'Different actions to choose' }
-    ]);
-
-    newLine();
-
-    // Final question: Experience level
-    const experienceLevel = await createInteractiveSelect(rl, 'What\'s your coding experience?', [
-      { label: 'Complete beginner', value: 'complete-beginner', description: 'Never coded before' },
-      { label: 'Some experience', value: 'some-experience', description: 'HTML/CSS or another language' },
-      { label: 'Know the basics', value: 'know-basics', description: 'Coded before, new to TypeScript' }
-    ]) as LearnerProfile['experienceLevel'];
-
-    const learnerProfile: LearnerProfile = {
-      experienceLevel,
-      projectIdea: projectName.trim(),
-      projectType,
-      projectPurpose,
-      projectFeatures
-    };
+    const learnerProfile = await askClarifyingQuestions(projectName.trim(), rl);
 
     rl.close();
     newLine();

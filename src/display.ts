@@ -76,7 +76,7 @@ function getWidth(): number {
 /**
  * Draw a horizontal bar
  */
-function drawBar(): string {
+export function drawBar(): string {
   return colors.muted('─'.repeat(getWidth()));
 }
 
@@ -96,6 +96,7 @@ export function displayWelcome(): void {
 /**
  * Start loading animation with fun words
  * Words cycle every 3-5 seconds
+ * Shows gray bars above and below to create entry field look
  */
 export function startLoading(): void {
   if (isLoading) {
@@ -112,6 +113,16 @@ export function startLoading(): void {
     console.log(colors.dim(`${funWords[wordIndex]}...`));
     return;
   }
+
+  // Draw the entry field structure: top bar, spinner line, bottom bar, blank line
+  console.log(drawBar()); // Top gray bar
+  process.stdout.write(`  ${colors.dim(funWords[wordIndex] + '...')}`); // Initial spinner line (indented)
+  console.log(); // End spinner line
+  console.log(drawBar()); // Bottom gray bar
+  console.log(); // Blank line below for spacing
+
+  // Move cursor back up to spinner line (4 lines up: blank, bottom bar, spinner, top bar -> land on spinner)
+  process.stdout.write('\x1B[3A'); // Move up 3 lines to spinner line
 
   // Smooth spinner animation
   spinnerInterval = setInterval(() => {
@@ -156,6 +167,7 @@ export function advanceLoadingWord(): void {
 
 /**
  * Stop loading animation
+ * Clears the entry field structure and positions cursor for next output
  */
 export function stopLoading(): void {
   isLoading = false;
@@ -170,7 +182,13 @@ export function stopLoading(): void {
     wordInterval = null;
   }
   if (process.stdout.isTTY) {
-    process.stdout.write('\r\x1B[K');
+    // Cursor is on spinner line - move up to top bar and clear all 4 lines
+    process.stdout.write('\x1B[1A'); // Move up to top bar
+    process.stdout.write('\r\x1B[K'); // Clear top bar
+    process.stdout.write('\x1B[1B\r\x1B[K'); // Move down, clear spinner line
+    process.stdout.write('\x1B[1B\r\x1B[K'); // Move down, clear bottom bar
+    process.stdout.write('\x1B[1B\r\x1B[K'); // Move down, clear blank line
+    process.stdout.write('\x1B[4A'); // Move back up 4 lines to where top bar was
   }
 }
 
@@ -335,7 +353,7 @@ export function displaySegmentHeader(
 export function displayResume(curriculum: Curriculum, state: TutorState): void {
   console.log();
   console.log(colors.text('Welcome back'));
-  console.log(colors.dim(`${curriculum.projectName} • ${state.completedSegments.length}/${curriculum.segments.length} complete`));
+  console.log(colors.dim(`${curriculum.projectName} • ${state.currentSegmentIndex}/${curriculum.segments.length} complete`));
   console.log();
 }
 
@@ -528,6 +546,27 @@ export function displayQuestionPrompt(question: string): void {
   console.log(colors.text(question));
   console.log(drawBar());
   process.stdout.write(colors.primary(symbols.arrow + ' '));
+}
+
+/**
+ * Close the question prompt after user enters their answer
+ * Clears the entry box and shows the Q&A in the log
+ */
+export function closeQuestionPrompt(question: string, answer: string): void {
+  if (!process.stdout.isTTY) return;
+
+  // Move cursor up to clear the entry box (4 lines: top bar, question, bottom bar, prompt with answer)
+  process.stdout.write('\x1B[4A');
+
+  // Clear and redraw as clean log entry
+  process.stdout.write('\r\x1B[K');
+  console.log(colors.dim(question));
+  process.stdout.write('\r\x1B[K');
+  console.log(colors.primary(symbols.arrow + ' ') + answer);
+  process.stdout.write('\r\x1B[K');
+  console.log(); // Blank line
+  process.stdout.write('\r\x1B[K');
+  // Don't print anything on last line - ready for next output
 }
 
 /**
@@ -831,7 +870,7 @@ export function initMultiLineTyperShark(
     clearForTyperShark(linesToClear);
   }
 
-  // NOTE: redrawMultiLineTyperShark expects exactly (lines.length * 2 + 2) lines above cursor
+  // NOTE: redrawMultiLineTyperShark expects exactly (lines.length * 2 + 1) lines above cursor
 
   for (let i = 0; i < lines.length; i++) {
     const { comment, code } = lines[i];
@@ -852,10 +891,9 @@ export function initMultiLineTyperShark(
     }
   }
 
-  // Top gray line - upper border of entry field
+  // Top gray line - upper border of entry field (directly above input prompt)
   console.log(drawBar());
-  console.log();
-  // Show input prompt
+  // Show input prompt (no blank line between gray bar and prompt)
   process.stdout.write(colors.primary('› '));
 }
 
@@ -868,17 +906,26 @@ export function redrawMultiLineTyperShark(
   lines: Array<{ comment: string; code: string }>,
   currentLineIndex: number,
   currentInput: string,
-  correctCount: number
+  correctCount: number,
+  completedLines: string[] = []
 ): void {
   if (!process.stdout.isTTY) return;
 
   // Calculate how many lines to move up from current cursor position
   // After init: cursor is at end of prompt line (no newline after prompt)
-  // Lines above cursor: (lines.length * 2) comment/code pairs + 1 gray bar + 1 blank line = lines.length * 2 + 2
-  const linesToMoveUp = lines.length * 2 + 2;
+  // Lines above cursor: (lines.length * 2) comment/code pairs + 1 gray bar = lines.length * 2 + 1
+  // Add extra buffer for text wrapping or any cursor position drift
+  const displayLines = lines.length * 2 + 1;
+  const extraBuffer = 3; // Extra lines to clear above in case of drift
+  const linesToMoveUp = displayLines + extraBuffer;
 
-  // Move cursor up to top of display
+  // Move cursor up to top of display (plus buffer)
   process.stdout.write(`\x1B[${linesToMoveUp}A`);
+
+  // Clear the extra buffer lines first
+  for (let i = 0; i < extraBuffer; i++) {
+    process.stdout.write('\r\x1B[K\n');
+  }
 
   // Redraw each line pair
   for (let i = 0; i < lines.length; i++) {
@@ -892,8 +939,9 @@ export function redrawMultiLineTyperShark(
     // Clear and draw code
     process.stdout.write('\r\x1B[K');
     if (i < currentLineIndex) {
-      // Completed line - all green
-      process.stdout.write('  ' + colors.success(code));
+      // Completed line - show what the user actually typed in green
+      const userTyped = completedLines[i] || code;
+      process.stdout.write('  ' + colors.success(userTyped));
     } else if (i === currentLineIndex) {
       // Current line - show typing progress
       let output = '  ';
@@ -912,15 +960,12 @@ export function redrawMultiLineTyperShark(
     process.stdout.write('\n');
   }
 
-  // Gray bar - upper border of entry field
+  // Gray bar - upper border of entry field (directly above input prompt)
   process.stdout.write('\r\x1B[K');
   process.stdout.write(drawBar());
   process.stdout.write('\n');
 
-  // Blank line
-  process.stdout.write('\r\x1B[K\n');
-
-  // Input prompt with current input
+  // Input prompt with current input (no blank line between gray bar and prompt)
   process.stdout.write('\r\x1B[K');
   process.stdout.write(colors.primary('› ') + currentInput);
 }
