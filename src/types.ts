@@ -1,54 +1,72 @@
-import { z } from 'zod';
+import { z } from "zod";
+
+// Config file structure
+export const ConfigSchema = z.object({
+  apiKey: z.string(),
+});
+export type Config = z.infer<typeof ConfigSchema>;
+
+// Init endpoint response
+export interface InitResponse {
+  success: boolean;
+  email: string;
+  totalMessages: number;
+  question: string;
+}
 
 // Checkpoint within a segment
 export const CheckpointSchema = z.object({
   id: z.string(),
   description: z.string(),
-  completed: z.boolean().default(false)
+  completed: z.boolean().default(false),
 });
 export type Checkpoint = z.infer<typeof CheckpointSchema>;
 
 // BUILD segment - create new functionality
 export const BuildSegmentSchema = z.object({
   id: z.string(),
-  type: z.literal('build'),
+  type: z.literal("build"),
   title: z.string(),
   goldenCode: z.string(),
   targetFile: z.string(),
   explanation: z.string(),
   engineeringFocus: z.string(),
-  checkpoints: z.array(CheckpointSchema)
+  checkpoints: z.array(CheckpointSchema),
 });
 export type BuildSegment = z.infer<typeof BuildSegmentSchema>;
 
 // REFACTOR segment - fix working but "bad" code
 export const RefactorSegmentSchema = z.object({
   id: z.string(),
-  type: z.literal('refactor'),
+  type: z.literal("refactor"),
   title: z.string(),
   startingCode: z.string(),
   goldenCode: z.string(),
   targetFile: z.string(),
   problem: z.string(),
   lesson: z.string(),
-  checkpoints: z.array(CheckpointSchema)
+  checkpoints: z.array(CheckpointSchema),
 });
 export type RefactorSegment = z.infer<typeof RefactorSegmentSchema>;
 
 // Discriminated union of segment types
-export const SegmentSchema = z.discriminatedUnion('type', [
+export const SegmentSchema = z.discriminatedUnion("type", [
   BuildSegmentSchema,
-  RefactorSegmentSchema
+  RefactorSegmentSchema,
 ]);
 export type Segment = z.infer<typeof SegmentSchema>;
 
 // Learner profile for personalization
 export const LearnerProfileSchema = z.object({
-  experienceLevel: z.enum(['complete-beginner', 'some-experience', 'know-basics']),
+  experienceLevel: z.enum([
+    "complete-beginner",
+    "some-experience",
+    "know-basics",
+  ]),
   projectIdea: z.string(),
-  projectType: z.string().optional(),      // What type of app (CLI, web, etc.)
-  projectPurpose: z.string().optional(),   // What problem it solves
-  projectFeatures: z.string().optional()   // Key features they want
+  projectType: z.string().optional(), // What type of app (CLI, web, etc.)
+  projectPurpose: z.string().optional(), // What problem it solves
+  projectFeatures: z.string().optional(), // Key features they want
 });
 export type LearnerProfile = z.infer<typeof LearnerProfileSchema>;
 
@@ -60,7 +78,7 @@ export const CurriculumSchema = z.object({
   workingDirectory: z.string(),
   segments: z.array(SegmentSchema),
   learnerProfile: LearnerProfileSchema.optional(),
-  createdAt: z.string()
+  createdAt: z.string(),
 });
 export type Curriculum = z.infer<typeof CurriculumSchema>;
 
@@ -72,7 +90,7 @@ export const StateSchema = z.object({
   totalMinutesSpent: z.number().default(0),
   lastAccessedAt: z.string(),
   // Context summary from previous segment (for context pruning)
-  previousSegmentSummary: z.string().optional()
+  previousSegmentSummary: z.string().optional(),
 });
 export type State = z.infer<typeof StateSchema>;
 export type TutorState = State; // Alias for clarity

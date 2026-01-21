@@ -1,10 +1,20 @@
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import { State, StateSchema, Curriculum, CurriculumSchema } from './types.js';
+import * as fs from "fs/promises";
+import * as path from "path";
+import * as os from "os";
+import {
+  State,
+  StateSchema,
+  Curriculum,
+  CurriculumSchema,
+  Config,
+  ConfigSchema,
+} from "./types.js";
 
 // Storage directory: ~/.claude-tutor/
-const DATA_DIR = path.join(process.env.HOME || '~', '.claude-tutor');
-const STATE_FILE = path.join(DATA_DIR, 'state.json');
+const DATA_DIR = path.join(os.homedir(), ".claude-tutor");
+const STATE_FILE = path.join(DATA_DIR, "state.json");
+// Config file: ~/.claude-tutor-config.json
+const CONFIG_FILE_PATH = path.join(os.homedir(), ".claude-tutor-config.json");
 
 /**
  * Ensure the data directory exists
@@ -18,7 +28,7 @@ export async function ensureDataDir(): Promise<void> {
  */
 export async function loadState(): Promise<State> {
   try {
-    const data = await fs.readFile(STATE_FILE, 'utf-8');
+    const data = await fs.readFile(STATE_FILE, "utf-8");
     return StateSchema.parse(JSON.parse(data));
   } catch {
     // Return default state if file doesn't exist or is invalid
@@ -27,7 +37,7 @@ export async function loadState(): Promise<State> {
       currentSegmentIndex: 0,
       completedSegments: [],
       totalMinutesSpent: 0,
-      lastAccessedAt: new Date().toISOString()
+      lastAccessedAt: new Date().toISOString(),
     };
   }
 }
@@ -42,11 +52,44 @@ export async function saveState(state: State): Promise<void> {
 }
 
 /**
+ * Load the config file
+ */
+export async function loadConfig(): Promise<Config | null> {
+  try {
+    const data = await fs.readFile(CONFIG_FILE_PATH, "utf-8");
+    return ConfigSchema.parse(JSON.parse(data));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Save the config file
+ */
+export async function saveConfig(config: Config): Promise<void> {
+  await fs.writeFile(CONFIG_FILE_PATH, JSON.stringify(config, null, 2));
+}
+
+/**
+ * Check if config file exists
+ */
+export async function configExists(): Promise<boolean> {
+  try {
+    await fs.access(CONFIG_FILE_PATH);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Load a curriculum by path
  */
-export async function loadCurriculum(curriculumPath: string): Promise<Curriculum | null> {
+export async function loadCurriculum(
+  curriculumPath: string,
+): Promise<Curriculum | null> {
   try {
-    const data = await fs.readFile(curriculumPath, 'utf-8');
+    const data = await fs.readFile(curriculumPath, "utf-8");
     return CurriculumSchema.parse(JSON.parse(data));
   } catch {
     return null;
@@ -70,13 +113,13 @@ export async function saveCurriculum(curriculum: Curriculum): Promise<string> {
 export async function markSegmentComplete(
   state: State,
   segmentId: string,
-  summary: string
+  summary: string,
 ): Promise<State> {
   const updatedState: State = {
     ...state,
     completedSegments: [...state.completedSegments, segmentId],
     currentSegmentIndex: state.currentSegmentIndex + 1,
-    previousSegmentSummary: summary
+    previousSegmentSummary: summary,
   };
   await saveState(updatedState);
   return updatedState;
@@ -102,6 +145,6 @@ export function createInitialState(curriculumPath: string): State {
     currentSegmentIndex: 0,
     completedSegments: [],
     totalMinutesSpent: 0,
-    lastAccessedAt: new Date().toISOString()
+    lastAccessedAt: new Date().toISOString(),
   };
 }
