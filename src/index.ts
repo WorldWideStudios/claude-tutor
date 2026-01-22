@@ -163,7 +163,7 @@ program
   .name("claude-tutor")
   .description("Claude Software Engineering Tutor")
   .version("1.0.0")
-  .option("-d, --dir <directory>", "Project directory", process.cwd())
+  .option("-d, --dir <directory>", "Project directory (auto-creates if not specified)")
   .option("-t, --token <apiKey>", "API token for authentication")
   .action(async (options) => {
     // Handle token authentication
