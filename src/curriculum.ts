@@ -105,6 +105,10 @@ RULES:
 - Golden code should be SHORT (under 30 lines per segment)
 - File paths should use src/ directory
 - Tailor explanations and pacing to the learner's experience level
+- IMPORTANT: goldenCode must include ALL shell commands the user needs to type
+- First segment MUST start with "mkdir -p src" to create the directory
+- Use heredoc syntax for file creation: cat > filename << 'EOF' ... EOF
+- Include the complete sequence: mkdir, then cat with heredoc for each file
 
 OUTPUT FORMAT (JSON only, no markdown):
 {
@@ -113,7 +117,7 @@ OUTPUT FORMAT (JSON only, no markdown):
       "type": "build",
       "title": "Short title",
       "targetFile": "src/filename.ts",
-      "goldenCode": "the code user should type",
+      "goldenCode": "mkdir -p src\\ncat > src/filename.ts << 'EOF'\\n// file contents here\\nEOF",
       "explanation": "Why we're doing this (1 sentence)",
       "engineeringFocus": "The engineering principle being taught",
       "checkpoints": ["what user should accomplish"]
@@ -143,7 +147,7 @@ Generate segments that specifically build this project, not generic exercises. E
 
   try {
     // Show progress steps
-    progress?.onStep('Analyzing project idea...');
+    progress?.onStep('Thinking about your project...');
 
     // Use streaming to show progress
     const stream = getClient().messages.stream({

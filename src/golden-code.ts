@@ -96,8 +96,9 @@ export function parseGoldenCode(goldenCode: string): ParsedGoldenCode {
       // Stop at heredoc
       if (trimmedLine.match(/^cat\s+>\s*\S+\s*<<\s*['"]?\w+['"]?$/)) break;
 
+      const lineComment = generateCodeComment(currentLine);
       codeBlockLines.push({
-        comment: codeBlockLines.length === 0 ? 'Type the code' : '',
+        comment: codeBlockLines.length === 0 && lineComment ? lineComment : '',
         code: currentLine
       });
       i++;
@@ -106,18 +107,21 @@ export function parseGoldenCode(goldenCode: string): ParsedGoldenCode {
     if (codeBlockLines.length > 0) {
       if (codeBlockLines.length === 1) {
         // Single line of code
+        const singleLineComment = generateCodeComment(codeBlockLines[0].code);
         steps.push({
           type: 'code-block',
           code: codeBlockLines[0].code,
-          comment: 'Type the code',
+          comment: singleLineComment || '',
           lineNumber: blockStartLine
         });
       } else {
-        // Multi-line code block
+        // Multi-line code block - generate comment from first meaningful line
+        const firstNonEmptyLine = codeBlockLines.find(l => l.code.trim());
+        const blockComment = firstNonEmptyLine ? generateCodeComment(firstNonEmptyLine.code) : '';
         steps.push({
           type: 'code-block',
           code: codeBlockLines.map(l => l.code).join('\n'),
-          comment: 'Type each line of code',
+          comment: blockComment || '',
           lines: codeBlockLines,
           lineNumber: blockStartLine
         });
@@ -157,6 +161,143 @@ function generateCommandComment(command: string): string {
   if (command.startsWith('cd')) return 'changes directory';
 
   return 'run this command';
+}
+
+/**
+ * Generate a helpful comment for a code line
+ */
+function generateCodeComment(code: string): string {
+  const trimmed = code.trim();
+
+  // Shebang
+  if (trimmed.startsWith('#!')) {
+    if (trimmed.includes('node')) return 'shebang - tells shell to use Node.js';
+    if (trimmed.includes('bash')) return 'shebang - tells shell to use Bash';
+    if (trimmed.includes('python')) return 'shebang - tells shell to use Python';
+    return 'shebang - tells shell which interpreter to use';
+  }
+
+  // Import statements
+  if (trimmed.startsWith('import ')) {
+    const match = trimmed.match(/import\s+(?:\{[^}]+\}|[\w*]+)\s+from\s+['"]([^'"]+)['"]/);
+    if (match) return `imports from ${match[1]}`;
+    const typeMatch = trimmed.match(/import\s+type\s+/);
+    if (typeMatch) return 'imports TypeScript types';
+    return 'imports a module';
+  }
+
+  // Require statements
+  if (trimmed.startsWith('const ') && trimmed.includes('require(')) {
+    const match = trimmed.match(/require\(['"]([^'"]+)['"]\)/);
+    if (match) return `requires ${match[1]}`;
+    return 'requires a module';
+  }
+
+  // Export statements
+  if (trimmed.startsWith('export ')) {
+    if (trimmed.includes('default')) return 'exports as default';
+    if (trimmed.includes('function')) return 'exports a function';
+    if (trimmed.includes('class')) return 'exports a class';
+    if (trimmed.includes('const') || trimmed.includes('let')) return 'exports a variable';
+    if (trimmed.includes('interface')) return 'exports a TypeScript interface';
+    if (trimmed.includes('type')) return 'exports a TypeScript type';
+    return 'exports from module';
+  }
+
+  // Function definitions
+  if (trimmed.startsWith('function ') || trimmed.match(/^(async\s+)?function\s+/)) {
+    const match = trimmed.match(/function\s+(\w+)/);
+    if (match) return `defines function ${match[1]}`;
+    return 'defines a function';
+  }
+
+  // Arrow functions with const/let
+  if ((trimmed.startsWith('const ') || trimmed.startsWith('let ')) && trimmed.includes('=>')) {
+    const match = trimmed.match(/(?:const|let)\s+(\w+)/);
+    if (match) return `defines ${match[1]} function`;
+    return 'defines an arrow function';
+  }
+
+  // Class definitions
+  if (trimmed.startsWith('class ')) {
+    const match = trimmed.match(/class\s+(\w+)/);
+    if (match) return `defines class ${match[1]}`;
+    return 'defines a class';
+  }
+
+  // Interface definitions
+  if (trimmed.startsWith('interface ')) {
+    const match = trimmed.match(/interface\s+(\w+)/);
+    if (match) return `defines interface ${match[1]}`;
+    return 'defines a TypeScript interface';
+  }
+
+  // Type definitions
+  if (trimmed.startsWith('type ') && trimmed.includes('=')) {
+    const match = trimmed.match(/type\s+(\w+)/);
+    if (match) return `defines type ${match[1]}`;
+    return 'defines a TypeScript type';
+  }
+
+  // Console.log
+  if (trimmed.startsWith('console.log')) return 'logs output to console';
+  if (trimmed.startsWith('console.error')) return 'logs error to console';
+  if (trimmed.startsWith('console.warn')) return 'logs warning to console';
+
+  // Return statement
+  if (trimmed.startsWith('return ')) return 'returns a value';
+
+  // Comments
+  if (trimmed.startsWith('//')) return 'code comment';
+  if (trimmed.startsWith('/*') || trimmed.startsWith('*')) return 'code comment';
+
+  // Variable declarations
+  if (trimmed.startsWith('const ')) {
+    const match = trimmed.match(/const\s+(\w+)/);
+    if (match) return `declares constant ${match[1]}`;
+    return 'declares a constant';
+  }
+  if (trimmed.startsWith('let ')) {
+    const match = trimmed.match(/let\s+(\w+)/);
+    if (match) return `declares variable ${match[1]}`;
+    return 'declares a variable';
+  }
+  if (trimmed.startsWith('var ')) {
+    const match = trimmed.match(/var\s+(\w+)/);
+    if (match) return `declares variable ${match[1]}`;
+    return 'declares a variable';
+  }
+
+  // Control flow
+  if (trimmed.startsWith('if ') || trimmed.startsWith('if(')) return 'conditional statement';
+  if (trimmed.startsWith('else if') || trimmed.startsWith('} else if')) return 'else-if condition';
+  if (trimmed === 'else' || trimmed === '} else {' || trimmed.startsWith('else {')) return 'else block';
+  if (trimmed.startsWith('for ') || trimmed.startsWith('for(')) return 'loop iteration';
+  if (trimmed.startsWith('while ') || trimmed.startsWith('while(')) return 'while loop';
+  if (trimmed.startsWith('switch ') || trimmed.startsWith('switch(')) return 'switch statement';
+  if (trimmed.startsWith('case ')) return 'switch case';
+  if (trimmed === 'break;') return 'breaks out of loop/switch';
+  if (trimmed === 'continue;') return 'continues to next iteration';
+
+  // Try/catch
+  if (trimmed.startsWith('try ') || trimmed === 'try {') return 'try block - handles errors';
+  if (trimmed.startsWith('catch') || trimmed.startsWith('} catch')) return 'catch block - handles errors';
+  if (trimmed.startsWith('finally') || trimmed.startsWith('} finally')) return 'finally block - always runs';
+  if (trimmed.startsWith('throw ')) return 'throws an error';
+
+  // Async/await
+  if (trimmed.startsWith('async ')) return 'async function';
+  if (trimmed.includes('await ')) return 'awaits async operation';
+
+  // Just brackets
+  if (trimmed === '{') return 'opens block';
+  if (trimmed === '}' || trimmed === '};') return 'closes block';
+  if (trimmed === '},' || trimmed === '},') return 'closes block';
+
+  // Empty/whitespace-only
+  if (!trimmed) return '';
+
+  return '';  // No generic fallback - let display handle it
 }
 
 /**

@@ -581,10 +581,11 @@ async function runTutorLoop(
     if (!loadingStopped) stopLoading();
     setAgentRunning(false);
     messages = result.messages;
-    // Use plan-based code loading from goldenCode (not dynamic extraction)
+    // Initialize golden step index but DON'T pre-load code yet
+    // Let the first input prompt load the appropriate step based on tutor context
     if (segment && segment.goldenCode) {
       currentGoldenStepIndex = progress.currentGoldenStep || 0;
-      currentExpectedCode = goldenCodeToExtractedCode(segment.goldenCode, currentGoldenStepIndex);
+      // Don't set currentExpectedCode here - it will be loaded lazily in getInput()
     }
     // Save the tutor's initial message to progress
     if (result.lastResponse) {
@@ -625,6 +626,10 @@ async function runTutorLoop(
 
     // TUTOR MODE: Use Typer Shark for guided typing
     // Don't use Typer Shark for heredoc continuation lines
+    // Lazy load golden code if not already loaded
+    if (!currentExpectedCode && !heredocState.active && segment?.goldenCode) {
+      currentExpectedCode = goldenCodeToExtractedCode(segment.goldenCode, currentGoldenStepIndex);
+    }
     if (currentExpectedCode && !heredocState.active) {
       if (currentExpectedCode.isMultiLine && currentExpectedCode.lines) {
         // Multi-line Typer Shark for heredocs with interleaved comments

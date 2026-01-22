@@ -235,7 +235,7 @@ The JSON output is how you communicate the profile - it will be parsed and used 
   try {
     // Start loading while Claude generates questions
     startLoading();
-    updateLoadingStatus("Analyzing your project");
+    updateLoadingStatus("Thinking about your project");
 
     for await (const message of query({
       prompt: `Help me understand this project idea better so I can create a personalized learning curriculum: "${userAnswer}"`,

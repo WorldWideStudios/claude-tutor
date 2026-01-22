@@ -9,6 +9,7 @@ import {
   finishTyperSharkDisplay,
   initTerminalMultiLine,
   redrawTerminalMultiLine,
+  clearForTyperShark,
   drawBar,
   getModeIndicator,
 } from './display.js';
@@ -354,7 +355,8 @@ export function createMultiQuestionWizard(
             for (let i = 0; i < linesToClear; i++) {
               process.stdout.write('\r\x1B[K\n');
             }
-            process.stdout.write(`\x1B[${linesToClear}A`);
+            // Move up by the ACTUAL lines to draw (not the clear buffer)
+            process.stdout.write(`\x1B[${questionLines}A`);
             drawQuestion();
           }
         }
@@ -384,7 +386,8 @@ export function createMultiQuestionWizard(
           for (let i = 0; i < linesToClear; i++) {
             process.stdout.write('\r\x1B[K\n');
           }
-          process.stdout.write(`\x1B[${linesToClear}A`);
+          // Move up by the ACTUAL lines to draw (not the clear buffer)
+          process.stdout.write(`\x1B[${newLines}A`);
           drawQuestion();
         }
       } else if (key === '\x1b[C' || key === '\x1bOC') {
@@ -399,7 +402,8 @@ export function createMultiQuestionWizard(
           for (let i = 0; i < linesToClear; i++) {
             process.stdout.write('\r\x1B[K\n');
           }
-          process.stdout.write(`\x1B[${linesToClear}A`);
+          // Move up by the ACTUAL lines to draw (not the clear buffer)
+          process.stdout.write(`\x1B[${newLines}A`);
           drawQuestion();
         }
       } else if (key === '\r' || key === '\n') {
@@ -417,7 +421,8 @@ export function createMultiQuestionWizard(
           for (let i = 0; i < linesToClear; i++) {
             process.stdout.write('\r\x1B[K\n');
           }
-          process.stdout.write(`\x1B[${linesToClear}A`);
+          // Move up by the ACTUAL lines to draw (not the clear buffer)
+          process.stdout.write(`\x1B[${newLines}A`);
           drawQuestion();
         } else {
           // Last question - show summary
@@ -429,7 +434,8 @@ export function createMultiQuestionWizard(
           for (let i = 0; i < linesToClear; i++) {
             process.stdout.write('\r\x1B[K\n');
           }
-          process.stdout.write(`\x1B[${linesToClear}A`);
+          // Move up by the ACTUAL lines to draw (not the clear buffer)
+          process.stdout.write(`\x1B[${summaryLines}A`);
 
           showingSummary = true;
           summarySelectedIndex = questions.length; // Default to Submit
@@ -1313,8 +1319,7 @@ export function createTyperSharkInput(
       // Enter - submit input
       if (key === '\r' || key === '\n') {
         cleanup();
-        console.log(); // New line after input
-        finishTyperSharkDisplay(); // Draw bottom gray line
+        finishTyperSharkDisplay(inputBuffer, !!explanation); // Clear display and show entered text
         resolve(inputBuffer);
         return;
       }
@@ -1392,293 +1397,60 @@ export function createTyperSharkInput(
 }
 
 /**
- * Create terminal-style multi-line input for heredocs with Typer Shark feedback
- * Mimics real terminal behavior:
- * - Shows expected code as reference (turns green as matched)
- * - User types in a growing input area below
- * - Enter creates new line with continuation caret (doesn't submit)
- * - Submits only when all expected text is typed correctly
+ * Multi-line Typer Shark input for heredocs and multi-line code
+ * Shows one line at a time like chained single-line Typer Shark
+ * User types each line, presses Enter to advance to next line
  *
- * @param _rl - readline interface (unused in raw mode but kept for compatibility)
+ * @param rl - readline interface
  * @param lines - array of code lines with comments
- * @param explanation - brief 1-2 line explanation of what's being built
+ * @param explanation - brief explanation shown at the start
  * @param linesToClear - number of previously streamed lines to clear
  */
-export function createMultiLineTyperSharkInput(
-  _rl: readline.Interface,
+export async function createMultiLineTyperSharkInput(
+  rl: readline.Interface,
   lines: CodeLine[],
   explanation?: string,
   linesToClear: number = 0
 ): Promise<string[]> {
-  return new Promise((resolve) => {
-    // Extract just the code lines
-    const expectedLines = lines.map(l => l.code);
-    // Full expected text with newlines between lines
-    const expectedText = expectedLines.join('\n');
+  const results: string[] = [];
+  const totalLineCount = lines.length;
 
-    // Non-TTY fallback
-    if (!process.stdin.isTTY) {
-      console.log(colors.dim('Enter each line:'));
-      const results: string[] = [];
-      const readline = require('readline');
-      const simpleRl = readline.createInterface({ input: process.stdin, output: process.stdout });
-      const collectSimple = (idx: number) => {
-        if (idx >= expectedLines.length) {
-          simpleRl.close();
-          resolve(results);
-          return;
-        }
-        simpleRl.question(`> `, (answer: string) => {
-          results.push(answer);
-          collectSimple(idx + 1);
-        });
-      };
-      collectSimple(0);
-      return;
+  // Clear raw streamed output first
+  if (linesToClear > 0) {
+    clearForTyperShark(linesToClear);
+  }
+
+  // Show brief explanation
+  if (explanation) {
+    console.log(colors.dim(`  // ${explanation}`));
+  }
+  console.log(colors.dim(`  Multi-line (${totalLineCount} lines):`));
+  console.log();
+
+  // Process each line using single-line Typer Shark
+  for (let i = 0; i < totalLineCount; i++) {
+    const line = lines[i];
+    const lineNum = i + 1;
+
+    // Show line number first
+    console.log(colors.dim(`  // Line ${lineNum} of ${totalLineCount}`));
+
+    // Generate explanatory comment for this specific line
+    const lineComment = line.comment || '';
+
+    // Use single-line Typer Shark for this line (with explanatory comment)
+    const result = await createTyperSharkInput(rl, line.code, lineComment);
+
+    // Check if user asked a question
+    if (isNaturalLanguageQuestion(result, line.code)) {
+      return ['__QUESTION__:' + result];
     }
 
-    // Check mode - in discuss mode, skip Typer Shark and accept free input
-    if (isDiscussMode()) {
-      console.log(colors.dim('  Expected code:'));
-      expectedLines.forEach(line => console.log(colors.dim(`    ${line}`)));
-      console.log();
-      process.stdout.write(colors.dim('› '));
+    results.push(result);
+  }
 
-      // Collect all lines with regular readline
-      const readline = require('readline');
-      const simpleRl = readline.createInterface({ input: process.stdin, output: process.stdout });
-      const results: string[] = [];
-      const collectSimple = (idx: number) => {
-        if (idx >= expectedLines.length) {
-          simpleRl.close();
-          resolve(results);
-          return;
-        }
-        simpleRl.question(`> `, (answer: string) => {
-          results.push(answer);
-          collectSimple(idx + 1);
-        });
-      };
-      collectSimple(0);
-      return;
-    }
-
-    const inputLines: string[] = []; // Completed input lines
-    let currentLineInput = ''; // Current line being typed
-    let correctCount = 0; // Characters correctly typed across ALL expected text
-    const hasExplanation = !!explanation;
-
-    // Escape sequence buffer for handling Shift+Tab
-    let escapeBuffer = '';
-    let escapeTimeout: NodeJS.Timeout | null = null;
-
-    // Initialize display
-    initTerminalMultiLine(expectedLines, linesToClear, explanation);
-
-    // Enable raw mode for direct character input
-    process.stdin.setRawMode(true);
-    process.stdin.resume();
-
-    // Get current full input text (for comparison with expected)
-    const getFullInput = () => {
-      if (inputLines.length === 0) {
-        return currentLineInput;
-      }
-      return inputLines.join('\n') + '\n' + currentLineInput;
-    };
-
-    const cleanup = () => {
-      process.stdin.pause(); // Stop receiving data during transition
-      process.stdin.setRawMode(false);
-      process.stdin.removeListener('data', handleKeypress);
-      if (escapeTimeout) clearTimeout(escapeTimeout);
-    };
-
-    const processKey = (key: string) => {
-      // Ctrl+C - exit
-      if (key === '\x03') {
-        cleanup();
-        console.log('\n');
-        process.exit(0);
-      }
-
-      // Shift+Tab - cycle mode
-      if (key === '\x1b[Z') {
-        cycleMode();
-        // Immediately redraw with new mode (mode footer will update)
-        const effectiveCorrectCount = isBlockMode() ? getFullInput().length : correctCount;
-        redrawTerminalMultiLine(expectedLines, expectedText, effectiveCorrectCount, inputLines, currentLineInput, hasExplanation);
-        return;
-      }
-
-      // Enter - new line (not submit, unless complete)
-      if (key === '\r' || key === '\n') {
-        // In DISCUSS MODE: Submit immediately like CLI behavior
-        if (isDiscussMode()) {
-          cleanup();
-
-          // Clear display properly
-          const linesToTop = (hasExplanation ? 1 : 0) + 1 + expectedLines.length + 1;
-          const totalLines = linesToTop + 1 + 1 + 1;
-
-          process.stdout.write(`\x1B[${linesToTop}A`);
-          for (let i = 0; i < totalLines; i++) {
-            process.stdout.write('\r\x1B[K\n');
-          }
-          process.stdout.write(`\x1B[${totalLines}A`);
-
-          // Return current input as a question/discussion
-          const fullInput = inputLines.length > 0
-            ? [...inputLines, currentLineInput].join('\n')
-            : currentLineInput;
-          resolve(['__QUESTION__:' + fullInput]);
-          return;
-        }
-
-        // Check if this is a natural language question on the first line
-        if (inputLines.length === 0 && isNaturalLanguageQuestion(currentLineInput, expectedLines[0])) {
-          cleanup();
-
-          // Clear display properly
-          // Structure: [explanation?] + "Expected:" + expected lines + top bar + current input + bottom bar + mode footer
-          // Cursor is on current input line
-          // Calculate distance from input line to top of display
-          const linesToTop = (hasExplanation ? 1 : 0) + 1 + expectedLines.length + 1;
-          const totalLines = linesToTop + 1 + 1 + 1; // input + bottom bar + mode footer
-
-          // Move to top of display
-          process.stdout.write(`\x1B[${linesToTop}A`);
-          // Clear all lines
-          for (let i = 0; i < totalLines; i++) {
-            process.stdout.write('\r\x1B[K\n');
-          }
-          // Move back to top
-          process.stdout.write(`\x1B[${totalLines}A`);
-
-          resolve(['__QUESTION__:' + currentLineInput]);
-          return;
-        }
-
-        // In block mode, count newline as correct
-        if (isBlockMode()) {
-          correctCount = getFullInput().length;
-          if (correctCount < expectedText.length && expectedText[correctCount] === '\n') {
-            correctCount++;
-          }
-        } else {
-          // Add newline to correctCount if it matches expected
-          const currentPos = getFullInput().length;
-          if (currentPos === correctCount && correctCount < expectedText.length && expectedText[correctCount] === '\n') {
-            correctCount++;
-          }
-        }
-
-        // Move current line to completed lines
-        inputLines.push(currentLineInput);
-        currentLineInput = '';
-
-        // Check if we've completed all expected text
-        const effectiveCorrectCount = isBlockMode() ? getFullInput().length + (inputLines.join('\n').length > 0 ? 0 : 0) : correctCount;
-        if (effectiveCorrectCount >= expectedText.length || (isBlockMode() && inputLines.length >= expectedLines.length)) {
-          cleanup();
-
-          // Final redraw
-          redrawTerminalMultiLine(expectedLines, expectedText, isBlockMode() ? expectedText.length : correctCount, inputLines, currentLineInput, hasExplanation);
-
-          // Move cursor down past bottom bar and mode footer (already drawn by redraw)
-          process.stdout.write('\x1B[2B\n');
-          console.log(colors.success('✓ All lines entered!'));
-
-          resolve(inputLines);
-          return;
-        }
-
-        // Redraw with new line
-        redrawTerminalMultiLine(expectedLines, expectedText, isBlockMode() ? getFullInput().length : correctCount, inputLines, currentLineInput, hasExplanation);
-        return;
-      }
-
-      // Backspace
-      if (key === '\x7f' || key === '\b') {
-        if (currentLineInput.length > 0) {
-          // If deleting a correct character, decrease correctCount
-          if (!isBlockMode()) {
-            const currentPos = getFullInput().length - 1;
-            if (correctCount > 0 && currentPos === correctCount - 1) {
-              correctCount--;
-            }
-          }
-          currentLineInput = currentLineInput.slice(0, -1);
-          redrawTerminalMultiLine(expectedLines, expectedText, isBlockMode() ? getFullInput().length : correctCount, inputLines, currentLineInput, hasExplanation);
-        } else if (inputLines.length > 0) {
-          // Backspace at start of line - go back to previous line
-          // First, decrement correctCount for the newline we're removing
-          if (!isBlockMode() && correctCount > 0) {
-            correctCount--;
-          }
-          currentLineInput = inputLines.pop() || '';
-          redrawTerminalMultiLine(expectedLines, expectedText, isBlockMode() ? getFullInput().length : correctCount, inputLines, currentLineInput, hasExplanation);
-        }
-        return;
-      }
-
-      // Ignore lone escape
-      if (key === '\x1b') {
-        return;
-      }
-
-      // Ignore Tab (only Shift+Tab cycles mode)
-      if (key === '\t') {
-        return;
-      }
-
-      // Regular character
-      if (key.length === 1 && key.charCodeAt(0) >= 32 && key.charCodeAt(0) < 127) {
-        currentLineInput += key;
-
-        if (isBlockMode()) {
-          // Block mode: all characters count as correct
-          correctCount = getFullInput().length;
-        } else {
-          // Tutor mode: check if this character matches expected
-          const currentPos = getFullInput().length - 1;
-          if (currentPos === correctCount && correctCount < expectedText.length && key === expectedText[correctCount]) {
-            correctCount++;
-          }
-        }
-
-        redrawTerminalMultiLine(expectedLines, expectedText, correctCount, inputLines, currentLineInput, hasExplanation);
-      }
-    };
-
-    const handleKeypress = (chunk: Buffer) => {
-      const data = chunk.toString();
-
-      // Handle escape sequences properly
-      for (const char of data) {
-        if (escapeBuffer.length > 0) {
-          escapeBuffer += char;
-          // Check if we have a complete escape sequence
-          if (escapeBuffer.length >= 3) {
-            if (escapeTimeout) clearTimeout(escapeTimeout);
-            processKey(escapeBuffer);
-            escapeBuffer = '';
-          }
-        } else if (char === '\x1b') {
-          escapeBuffer = char;
-          if (escapeTimeout) clearTimeout(escapeTimeout);
-          escapeTimeout = setTimeout(() => {
-            if (escapeBuffer === '\x1b') processKey('\x1b');
-            escapeBuffer = '';
-          }, 50);
-        } else {
-          processKey(char);
-        }
-      }
-    };
-
-    process.stdin.on('data', handleKeypress);
-  });
+  console.log(colors.success('✓ All lines entered!'));
+  return results;
 }
 
 /**

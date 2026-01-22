@@ -981,11 +981,40 @@ export function initTyperSharkDisplay(expected: string, explanation?: string): v
 
 /**
  * Finish Typer Shark display
- * Cursor is on input line, move down past bottom bar and mode footer
+ * Clears the entire display and shows just the entered text in the log
+ * @param inputText - the text the user typed (to show in log)
+ * @param hasExplanation - whether explanation was displayed (affects line count)
  */
-export function finishTyperSharkDisplay(): void {
-  // Move down past bottom bar and mode footer (2 lines)
-  process.stdout.write('\x1B[2B\n');
+export function finishTyperSharkDisplay(inputText: string, hasExplanation: boolean = false): void {
+  // Display structure from input line:
+  //   -4 (or -5): blank line
+  //   -3 (or -4): explanation (if present)
+  //   -2 (or -3): target text
+  //   -1 (or -2): top bar
+  //    0: input line (cursor is here)
+  //   +1: bottom bar
+  //   +2: mode footer
+
+  const linesAbove = hasExplanation ? 4 : 3; // Lines above input line
+  const linesBelow = 2; // bottom bar + mode footer
+  const totalLines = linesAbove + 1 + linesBelow; // +1 for input line itself
+
+  // Move up to the start of the display (blank line)
+  process.stdout.write(`\x1B[${linesAbove}A`);
+
+  // Clear all display lines
+  for (let i = 0; i < totalLines; i++) {
+    process.stdout.write('\r\x1B[K'); // Clear line
+    if (i < totalLines - 1) {
+      process.stdout.write('\x1B[1B'); // Move down
+    }
+  }
+
+  // Move back to top
+  process.stdout.write(`\x1B[${totalLines - 1}A`);
+
+  // Print just the entered text as a log entry
+  console.log(colors.success('✓ ') + inputText);
 }
 
 // ============================================
