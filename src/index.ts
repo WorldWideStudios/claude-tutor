@@ -214,6 +214,51 @@ async function startCommand(projectDir: string | undefined): Promise<void> {
     ? path.resolve(projectDir)
     : ""; // Will be set after getting project name
 
+  // Check for existing project in GLOBAL STATE first (when no directory specified)
+  if (!userSpecifiedDir) {
+    const existingState = await loadState();
+    if (existingState && existingState.curriculumPath) {
+      const existingCurriculum = await loadCurriculum(existingState.curriculumPath);
+      if (
+        existingCurriculum &&
+        !isCurriculumComplete(existingCurriculum, existingState.completedSegments)
+      ) {
+        // There's an active project - ask if they want to resume
+        const rl = readline.createInterface({
+          input: process.stdin,
+          output: process.stdout,
+        });
+
+        const progress = `${existingState.currentSegmentIndex + 1}/${existingCurriculum.segments.length}`;
+        displayInfo(
+          `Found existing project: "${existingCurriculum.projectName}" (segment ${progress})`,
+        );
+        newLine();
+
+        const answer = await new Promise<string>((resolve) => {
+          displayQuestionPrompt("Continue this project? (Y/n)");
+          rl.once("line", resolve);
+        });
+
+        if (
+          answer.toLowerCase() === "y" ||
+          answer.toLowerCase() === "yes" ||
+          answer === ""
+        ) {
+          rl.close();
+          // Resume the existing project
+          displayResume(existingCurriculum, existingState);
+          await runTutorLoop(existingCurriculum, existingState);
+          return;
+        }
+
+        rl.close();
+        displayInfo("Starting new project...");
+        newLine();
+      }
+    }
+  }
+
   // Check for existing project IN THE SPECIFIED DIRECTORY (only if user specified one)
   let existingCurriculum = null;
   if (userSpecifiedDir) {
@@ -238,14 +283,14 @@ async function startCommand(projectDir: string | undefined): Promise<void> {
         output: process.stdout,
       });
 
-      const progress = `${existingState.currentSegmentIndex}/${existingCurriculum.segments.length}`;
+      const progress = `${existingState.currentSegmentIndex + 1}/${existingCurriculum.segments.length}`;
       displayInfo(
-        `Continue project: "${existingCurriculum.projectName}" (${progress} complete)`,
+        `Found existing project: "${existingCurriculum.projectName}" (segment ${progress})`,
       );
       newLine();
 
       const answer = await new Promise<string>((resolve) => {
-        displayQuestionPrompt("Resume this project? (y/n)");
+        displayQuestionPrompt("Continue this project? (Y/n)");
         rl.once("line", resolve);
       });
 
