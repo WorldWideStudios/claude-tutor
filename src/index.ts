@@ -197,7 +197,7 @@ program.parse();
 /**
  * Start a new tutoring project
  */
-async function startCommand(projectDir: string): Promise<void> {
+async function startCommand(projectDir: string | undefined): Promise<void> {
   // Check if config exists
   if (!(await configExists())) {
     console.error(
@@ -208,20 +208,25 @@ async function startCommand(projectDir: string): Promise<void> {
 
   displayWelcome(); // No skill on initial startup
 
-  // Resolve the project directory first
-  const resolvedProjectDir = path.resolve(projectDir || process.cwd());
+  // Track whether user specified a directory or we should auto-create one
+  const userSpecifiedDir = !!projectDir;
+  let resolvedProjectDir = userSpecifiedDir
+    ? path.resolve(projectDir)
+    : ""; // Will be set after getting project name
 
-  // Check for existing project IN THE SPECIFIED DIRECTORY
-  const curriculumPathInDir = path.join(resolvedProjectDir, ".curriculum.json");
+  // Check for existing project IN THE SPECIFIED DIRECTORY (only if user specified one)
   let existingCurriculum = null;
-  try {
-    existingCurriculum = await loadCurriculum(curriculumPathInDir);
-  } catch {
-    // No curriculum in this directory, proceed with new project
+  if (userSpecifiedDir) {
+    const curriculumPathInDir = path.join(resolvedProjectDir, ".curriculum.json");
+    try {
+      existingCurriculum = await loadCurriculum(curriculumPathInDir);
+    } catch {
+      // No curriculum in this directory, proceed with new project
+    }
   }
 
   // If a curriculum exists in THIS directory, ask to resume
-  if (existingCurriculum) {
+  if (existingCurriculum && userSpecifiedDir) {
     const existingState = await loadState();
     if (
       existingState &&
@@ -334,11 +339,17 @@ async function startCommand(projectDir: string): Promise<void> {
     rl.close();
     newLine();
 
-    // Create directory if it doesn't exist
-    fs.mkdirSync(resolvedProjectDir, { recursive: true });
+    // Create project directory - either use specified dir or auto-create a safe one
+    if (!userSpecifiedDir) {
+      // Auto-create a safe project directory based on project name
+      resolvedProjectDir = createProjectDirectory(projectName.trim());
+    } else {
+      // User specified a directory - create it if needed
+      fs.mkdirSync(resolvedProjectDir, { recursive: true });
+    }
     displayInfo(`Project folder: ${resolvedProjectDir}`);
 
-    // Run pre-flight checks on the new directory
+    // Run pre-flight checks on the directory
     const preflight = runPreflightChecks(resolvedProjectDir);
     if (!preflight.ok) {
       displayPreflightError(preflight.error!);
@@ -363,7 +374,7 @@ async function startCommand(projectDir: string): Promise<void> {
     const curriculumPath = await saveCurriculum(curriculum);
 
     // Initialize Git (silent)
-    const gitResult = initGitRepo(projectDir);
+    const gitResult = initGitRepo(resolvedProjectDir);
     if (gitResult.success) {
       displayGitInit();
     }
