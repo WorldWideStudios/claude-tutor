@@ -12,8 +12,8 @@ import {
   executeGitCommand,
   markComplete,
 } from "./tools.js";
-// Storage imports removed - state management handled by caller
-import type { Curriculum, Segment, TutorState } from "./types.js";
+import { updateProgress, addCompletedStep } from "./storage.js";
+import type { Curriculum, Segment, TutorState, Progress } from "./types.js";
 import { logInteraction } from "./logging.js";
 
 // Lazy-initialize client to ensure env vars are loaded first
@@ -131,12 +131,12 @@ interface ToolInput {
 /**
  * Handle tool calls from Claude
  */
-function handleToolCall(
+async function handleToolCall(
   toolName: string,
   toolInput: ToolInput,
   curriculum: Curriculum,
   state: TutorState,
-): { result: string; segmentCompleted: boolean; summary?: string } {
+): Promise<{ result: string; segmentCompleted: boolean; summary?: string }> {
   const cwd = curriculum.workingDirectory;
   let segmentCompleted = false;
   let summary: string | undefined;
@@ -144,6 +144,15 @@ function handleToolCall(
   switch (toolName) {
     case "verify_syntax": {
       const result = verifySyntax(toolInput.filepath!, cwd);
+      // Update progress if syntax check passed
+      if (result.success) {
+        try {
+          await updateProgress(cwd, { syntaxVerified: true });
+          await addCompletedStep(cwd, `Syntax verified for ${toolInput.filepath}`);
+        } catch {
+          // Ignore progress update errors
+        }
+      }
       return {
         result: result.output || result.error || "Unknown error",
         segmentCompleted: false,
@@ -156,6 +165,13 @@ function handleToolCall(
         toolInput.maintainability_issue!,
         toolInput.edge_case_missed,
       );
+      // Update progress - code was reviewed
+      try {
+        await updateProgress(cwd, { codeReviewed: true });
+        await addCompletedStep(cwd, `Code review completed (score: ${toolInput.readability_score}/10)`);
+      } catch {
+        // Ignore progress update errors
+      }
       return {
         result: result.output || "Review recorded",
         segmentCompleted: false,
@@ -242,6 +258,7 @@ export interface AgentOptions {
   segment: Segment;
   segmentIndex: number;
   previousSummary?: string;
+  progress?: Progress; // Progress tracking for resume
   onText: (text: string) => void;
   onToolUse?: (toolName: string, status: "start" | "end") => void;
   onSegmentComplete: (summary: string) => void;
@@ -275,6 +292,7 @@ export async function runAgentTurn(
     segment,
     segmentIndex,
     previousSummary,
+    progress,
     onText,
     onToolUse,
     onSegmentComplete,
@@ -288,6 +306,7 @@ export async function runAgentTurn(
     segment,
     segmentIndex,
     previousSummary,
+    progress,
   );
 
   let segmentCompleted = false;
@@ -356,7 +375,7 @@ export async function runAgentTurn(
         result,
         segmentCompleted: completed,
         summary,
-      } = handleToolCall(
+      } = await handleToolCall(
         toolBlock.name,
         toolBlock.input as ToolInput,
         curriculum,

@@ -115,3 +115,29 @@ export interface ToolResult {
   output?: string;
   error?: string;
 }
+
+// Progress tracking - stored in project directory
+export const ProgressSchema = z.object({
+  // Current segment being worked on
+  currentSegmentId: z.string(),
+  currentSegmentIndex: z.number(),
+
+  // Step-by-step progress within the segment
+  completedSteps: z.array(z.string()), // Description of what user has done
+  currentStep: z.string().optional(), // What they're currently working on
+
+  // Conversation context for resuming
+  lastTutorMessage: z.string().optional(), // Last thing Claude said
+  lastUserAction: z.string().optional(), // Last thing user did
+
+  // Code state
+  codeWritten: z.boolean().default(false), // Has user written any code
+  syntaxVerified: z.boolean().default(false), // Has code passed syntax check
+  codeReviewed: z.boolean().default(false), // Has code been reviewed
+  committed: z.boolean().default(false), // Has user committed
+
+  // Timestamps
+  startedAt: z.string(),
+  lastUpdatedAt: z.string(),
+});
+export type Progress = z.infer<typeof ProgressSchema>;

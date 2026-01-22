@@ -8,6 +8,8 @@ import {
   CurriculumSchema,
   Config,
   ConfigSchema,
+  Progress,
+  ProgressSchema,
 } from "./types.js";
 
 // Storage directory: ~/.claude-tutor/
@@ -147,4 +149,81 @@ export function createInitialState(curriculumPath: string): State {
     totalMinutesSpent: 0,
     lastAccessedAt: new Date().toISOString(),
   };
+}
+
+// Progress file name - stored in project directory
+const PROGRESS_FILE = ".tutor-progress.json";
+
+/**
+ * Load progress from project directory
+ */
+export async function loadProgress(projectDir: string): Promise<Progress | null> {
+  try {
+    const progressPath = path.join(projectDir, PROGRESS_FILE);
+    const data = await fs.readFile(progressPath, "utf-8");
+    return ProgressSchema.parse(JSON.parse(data));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Save progress to project directory
+ */
+export async function saveProgress(projectDir: string, progress: Progress): Promise<void> {
+  const progressPath = path.join(projectDir, PROGRESS_FILE);
+  progress.lastUpdatedAt = new Date().toISOString();
+  await fs.writeFile(progressPath, JSON.stringify(progress, null, 2));
+}
+
+/**
+ * Create initial progress for a segment
+ */
+export function createInitialProgress(segmentId: string, segmentIndex: number): Progress {
+  return {
+    currentSegmentId: segmentId,
+    currentSegmentIndex: segmentIndex,
+    completedSteps: [],
+    currentStep: undefined,
+    lastTutorMessage: undefined,
+    lastUserAction: undefined,
+    codeWritten: false,
+    syntaxVerified: false,
+    codeReviewed: false,
+    committed: false,
+    startedAt: new Date().toISOString(),
+    lastUpdatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Update progress with a completed step
+ */
+export async function updateProgress(
+  projectDir: string,
+  updates: Partial<Progress>,
+): Promise<Progress> {
+  let progress = await loadProgress(projectDir);
+  if (!progress) {
+    throw new Error("No progress file found");
+  }
+  progress = { ...progress, ...updates };
+  await saveProgress(projectDir, progress);
+  return progress;
+}
+
+/**
+ * Add a completed step to progress
+ */
+export async function addCompletedStep(
+  projectDir: string,
+  stepDescription: string,
+): Promise<Progress> {
+  const progress = await loadProgress(projectDir);
+  if (!progress) {
+    throw new Error("No progress file found");
+  }
+  progress.completedSteps.push(stepDescription);
+  await saveProgress(projectDir, progress);
+  return progress;
 }

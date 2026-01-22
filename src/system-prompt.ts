@@ -1,4 +1,4 @@
-import type { Curriculum, Segment, BuildSegment, RefactorSegment } from './types.js';
+import type { Curriculum, Segment, BuildSegment, RefactorSegment, Progress } from './types.js';
 
 /**
  * Build the system prompt for the tutor.
@@ -8,7 +8,8 @@ export function buildSystemPrompt(
   curriculum: Curriculum,
   segment: Segment,
   segmentIndex: number,
-  previousSummary?: string
+  previousSummary?: string,
+  progress?: Progress
 ): string {
   const segmentContext = segment.type === 'build'
     ? buildBuildContext(segment as BuildSegment)
@@ -17,6 +18,28 @@ export function buildSystemPrompt(
   const previousContext = previousSummary
     ? `\n## PREVIOUS SEGMENT\n${previousSummary}\n`
     : '';
+
+  // Build progress context if resuming mid-segment
+  let progressContext = '';
+  if (progress && progress.completedSteps.length > 0) {
+    progressContext = `
+## RESUMING SESSION
+
+User is resuming this segment. Here's what they've already done:
+${progress.completedSteps.map((step, i) => `${i + 1}. ${step}`).join('\n')}
+
+Progress status:
+- Code written: ${progress.codeWritten ? 'Yes' : 'Not yet'}
+- Syntax verified: ${progress.syntaxVerified ? 'Yes' : 'Not yet'}
+- Code reviewed: ${progress.codeReviewed ? 'Yes' : 'Not yet'}
+- Committed: ${progress.committed ? 'Yes' : 'Not yet'}
+
+${progress.lastTutorMessage ? `Your last message to them: "${progress.lastTutorMessage.slice(0, 200)}..."` : ''}
+${progress.currentStep ? `They were working on: ${progress.currentStep}` : ''}
+
+IMPORTANT: Continue from where they left off. Don't repeat completed steps. Acknowledge they're back and guide them to the next step.
+`;
+  }
 
   return `You are a Software Engineering tutor for complete beginners.
 
@@ -90,7 +113,7 @@ When user runs command successfully, give next step immediately.
 5. If issues: explain fix
 6. Give git commit command
 7. After commit: call mark_segment_complete
-${previousContext}
+${previousContext}${progressContext}
 ## CURRENT SEGMENT
 
 Project: ${curriculum.projectName}

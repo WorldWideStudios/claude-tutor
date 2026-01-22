@@ -29,6 +29,11 @@ import {
   createInitialState,
   configExists,
   saveConfig,
+  loadProgress,
+  saveProgress,
+  createInitialProgress,
+  updateProgress,
+  addCompletedStep,
 } from "./storage.js";
 import {
   runAgentTurn,
@@ -75,7 +80,7 @@ import {
   newLine,
 } from "./display.js";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
-import type { Curriculum, TutorState, LearnerProfile } from "./types.js";
+import type { Curriculum, TutorState, LearnerProfile, Progress } from "./types.js";
 import { askClarifyingQuestions, type QuestionContext } from "./questions.js";
 import { loginCommand } from "./auth.js";
 
@@ -531,20 +536,32 @@ async function runTutorLoop(
     return;
   }
 
+  // Load or create progress for this segment
+  let progress: Progress | null = await loadProgress(curriculum.workingDirectory);
+  const isResuming = progress !== null && progress.currentSegmentId === segment.id;
+
+  if (!progress || progress.currentSegmentId !== segment.id) {
+    // Create new progress for this segment
+    progress = createInitialProgress(segment.id, state.currentSegmentIndex);
+    await saveProgress(curriculum.workingDirectory, progress);
+  }
+
   displaySegmentHeader(curriculum, segment, state.currentSegmentIndex);
 
-  // Send initial "start" message to kick off the segment
+  // Send initial "start" or "resume" message to kick off the segment
   try {
     resetStreamState();
     setAgentRunning(true);
     startLoading();
     let loadingStopped = false;
-    const result = await runAgentTurn("start", messages, {
+    const startMessage = isResuming ? "resume" : "start";
+    const result = await runAgentTurn(startMessage, messages, {
       curriculum,
       state,
       segment,
       segmentIndex: state.currentSegmentIndex,
       previousSummary,
+      progress: isResuming ? progress : undefined, // Only pass progress if resuming
       onText: (text) => {
         if (!loadingStopped) {
           stopLoading();
@@ -567,6 +584,10 @@ async function runTutorLoop(
     // Extract expected code from response for character tracking
     if (result.lastResponse) {
       currentExpectedCode = extractExpectedCode(result.lastResponse);
+      // Save the tutor's initial message to progress
+      await updateProgress(curriculum.workingDirectory, {
+        lastTutorMessage: result.lastResponse.slice(0, 500),
+      });
     }
     newLine();
   } catch (error: any) {
@@ -639,6 +660,17 @@ async function runTutorLoop(
         );
         displayCommand(fullCommand.split("\n")[0] + " ...", cmdResult.success);
         displayCommandOutput(cmdResult.output);
+
+        // Update progress - heredoc usually means file creation
+        if (cmdResult.success) {
+          const fileMatch = fullCommand.match(/cat\s*>\s*(\S+)/);
+          const fileName = fileMatch ? fileMatch[1] : "file";
+          await updateProgress(curriculum.workingDirectory, {
+            codeWritten: true,
+            lastUserAction: `Created file: ${fileName}`,
+          });
+          await addCompletedStep(curriculum.workingDirectory, `Created file: ${fileName}`);
+        }
 
         // Send to Claude
         const messageToSend = cmdResult.success
@@ -779,6 +811,26 @@ async function runTutorLoop(
       displayCommand(userInput, cmdResult.success);
       displayCommandOutput(cmdResult.output);
 
+      // Update progress based on command type
+      if (cmdResult.success) {
+        const updates: Partial<Progress> = {
+          lastUserAction: userInput,
+        };
+
+        // Track specific actions
+        if (userInput.startsWith("cat >") || userInput.includes(">> ")) {
+          updates.codeWritten = true;
+          await addCompletedStep(curriculum.workingDirectory, `Created/modified file: ${userInput.split(/[>\s]+/)[1] || "file"}`);
+        } else if (userInput.startsWith("git commit")) {
+          updates.committed = true;
+          await addCompletedStep(curriculum.workingDirectory, "Committed code to git");
+        } else if (userInput.startsWith("mkdir")) {
+          await addCompletedStep(curriculum.workingDirectory, `Created directory: ${userInput}`);
+        }
+
+        await updateProgress(curriculum.workingDirectory, updates);
+      }
+
       messageToSend = cmdResult.success
         ? `I ran: ${userInput}\nOutput: ${cmdResult.output || "(success)"}`
         : `I ran: ${userInput}\nError: ${cmdResult.output}`;
@@ -843,6 +895,10 @@ async function runTutorLoop(
           rl.close();
           return;
         }
+
+        // Create new progress for the next segment
+        progress = createInitialProgress(segment.id, state.currentSegmentIndex);
+        await saveProgress(curriculum.workingDirectory, progress);
 
         // Prune context for new segment
         messages = pruneContextForNewSegment(result.summary || "");
