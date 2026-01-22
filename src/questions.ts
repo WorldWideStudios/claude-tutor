@@ -4,7 +4,6 @@ import type { LearnerProfile } from "./types.js";
 import {
   createMultiQuestionWizard,
   type WizardQuestion,
-  type SelectOption,
 } from "./input.js";
 import { startLoading, stopLoading, updateLoadingStatus } from "./display.js";
 import * as readline from "readline";
@@ -36,41 +35,119 @@ interface AskUserQuestionInput {
 }
 
 /**
+ * Backend context that can be passed to inform question generation
+ */
+export interface QuestionContext {
+  userEmail?: string;
+  totalMessages?: number;
+  initialQuestion?: string;
+  // Add any other backend context here
+}
+
+/**
+ * Parse learner profile JSON from Claude's response text
+ */
+function parseProfileFromResponse(responseText: string): LearnerProfile | null {
+  try {
+    // Look for JSON block in the response (may be wrapped in markdown code fences)
+    const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/);
+    let jsonStr = jsonMatch ? jsonMatch[1].trim() : null;
+
+    // If no code fence, try to find raw JSON object
+    if (!jsonStr) {
+      const jsonObjectMatch = responseText.match(/\{[\s\S]*"projectIdea"[\s\S]*\}/);
+      jsonStr = jsonObjectMatch ? jsonObjectMatch[0] : null;
+    }
+
+    if (!jsonStr) {
+      return null;
+    }
+
+    const parsed = JSON.parse(jsonStr);
+
+    // Validate required fields
+    if (!parsed.projectIdea || !parsed.experienceLevel || !parsed.profileSummary) {
+      return null;
+    }
+
+    return {
+      projectIdea: parsed.projectIdea,
+      experienceLevel: parsed.experienceLevel,
+      projectType: parsed.projectType,
+      projectGoals: parsed.projectGoals,
+      technicalContext: parsed.technicalContext,
+      constraints: parsed.constraints,
+      additionalContext: parsed.additionalContext,
+      profileSummary: parsed.profileSummary,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Use Claude SDK to dynamically generate and ask clarifying questions
- * based on the user's project idea
+ * based on the user's project idea and any available context
  */
 export async function askClarifyingQuestions(
   initialQuestion: string,
   userAnswer: string,
   rl: readline.Interface,
+  context?: QuestionContext,
 ): Promise<LearnerProfile> {
-  // Collected answers that will be used to build the learner profile
+  // Collected answers that will be used by Claude to build the profile
   const collectedAnswers: Record<string, string> = {};
+  let finalResponseText = "";
 
-  // System prompt to guide Claude in asking relevant questions
+  // Build context section for the system prompt
+  const contextSection = context
+    ? `
+Available context about this user:
+${context.userEmail ? `- User email: ${context.userEmail}` : ""}
+${context.totalMessages !== undefined ? `- Previous interactions: ${context.totalMessages} messages` : ""}
+${context.initialQuestion ? `- The initial question asked was personalized: "${context.initialQuestion}"` : ""}
+`
+    : "";
+
+  // System prompt that lets Claude decide what questions are needed
   const systemPrompt = `You are helping understand a user's coding project to create a personalized learning curriculum.
 
 Initial question asked: "${initialQuestion}"
 User's answer: "${userAnswer}"
+${contextSection}
 
-Based on the context above, INFER as much as you can about their project. DO NOT re-ask questions where the answer is already clear.
+Your task is to:
+1. ANALYZE the user's response to understand as much as possible about their project and goals
+2. DECIDE what additional information would be most valuable to create a personalized curriculum
+3. ASK only the questions that are truly needed - this could be 0-4 questions depending on context
+4. CREATE a learner profile summarizing everything you've learned
 
-For example:
-- If the initial question mentions "CLI game" or they answered about a game, DON'T ask what type of application - you already know it's a CLI game
-- If they mentioned a specific feature or game type, DON'T ask generic questions - build on what they told you
+IMPORTANT GUIDELINES:
+- DO NOT ask about things already clear from the user's answer
+- DO NOT use generic/templated questions - tailor each question to THIS specific project
+- Focus on understanding: their experience level, what success looks like to them, any constraints
+- If the user's answer is detailed enough, you may not need to ask many (or any) follow-up questions
+- Questions should feel conversational and specific, not like a form
 
-Your job is to ask ONLY the remaining clarifying questions needed (2-4 questions) using the AskUserQuestion tool to understand:
-1. What type of application this is (CLI, web, API, script) - SKIP if already clear from context
-2. What problem it solves or what it helps the user do - SKIP if already clear from context
-3. What the most important feature should be - SKIP if they already told you
-4. The user's coding experience level
+WORKFLOW:
+1. Use AskUserQuestion tool to ask clarifying questions (if needed)
+2. After questions are answered (or if you have enough info already), output a JSON profile
 
-IMPORTANT: 
-- You MUST use the AskUserQuestion tool to ask these questions. Do not ask questions in plain text.
-- ONLY ask questions where you genuinely don't know the answer from the initial context
-- If the context makes something clear, accept that information and move on
+FINAL OUTPUT (REQUIRED):
+After gathering information, you MUST output a JSON learner profile in this exact format:
+\`\`\`json
+{
+  "projectIdea": "Clear description of what the user wants to build",
+  "experienceLevel": "Description of their coding experience",
+  "projectType": "Type of application (CLI, web, game, etc.)",
+  "projectGoals": "What they want to achieve or learn",
+  "technicalContext": "Any relevant technical background",
+  "constraints": "Any mentioned constraints",
+  "profileSummary": "2-3 sentence synthesis of this learner"
+}
+\`\`\`
 
-After receiving the answers, summarize what you learned in a brief response.`;
+The JSON output is how you communicate the profile - it will be parsed and used to personalize the curriculum.`;
 
   // Track if we've stopped loading for questions
   let loadingStopped = false;
@@ -90,6 +167,17 @@ After receiving the answers, summarize what you learned in a brief response.`;
 
       const questionInput = input as unknown as AskUserQuestionInput;
 
+      // If no questions, skip the wizard
+      if (!questionInput.questions || questionInput.questions.length === 0) {
+        return {
+          behavior: "allow",
+          updatedInput: {
+            questions: [],
+            answers: {},
+          },
+        };
+      }
+
       // Convert SDK questions to wizard format
       const wizardQuestions: WizardQuestion[] = questionInput.questions.map(
         (q) => ({
@@ -106,7 +194,7 @@ After receiving the answers, summarize what you learned in a brief response.`;
       // Use the multi-question wizard
       const answers = await createMultiQuestionWizard(rl, wizardQuestions);
 
-      // Store in collected answers for building profile
+      // Store in collected answers for logging
       questionInput.questions.forEach((q) => {
         const headerKey = q.header.toLowerCase();
         collectedAnswers[headerKey] = answers[q.question] || "";
@@ -122,6 +210,10 @@ After receiving the answers, summarize what you learned in a brief response.`;
           options: { choices: q.options.map((opt) => opt.label) },
         });
       });
+
+      // Restart loading after questions for profile generation
+      startLoading();
+      updateLoadingStatus("Creating your profile");
 
       return {
         behavior: "allow",
@@ -139,11 +231,11 @@ After receiving the answers, summarize what you learned in a brief response.`;
     };
   };
 
-  // Run the query with AskUserQuestion tool available
+  // Run the query with AskUserQuestion tool
   try {
     // Start loading while Claude generates questions
     startLoading();
-    updateLoadingStatus("Generating questions");
+    updateLoadingStatus("Analyzing your project");
 
     for await (const message of query({
       prompt: `Help me understand this project idea better so I can create a personalized learning curriculum: "${userAnswer}"`,
@@ -152,151 +244,62 @@ After receiving the answers, summarize what you learned in a brief response.`;
         systemPrompt,
         tools: ["AskUserQuestion"],
         canUseTool,
-        maxTurns: 3,
+        maxTurns: 5,
         permissionMode: "default",
       },
     })) {
-      // We just need to iterate through the messages to let the query complete
-      // The canUseTool callback handles the actual question asking
+      // Capture the final text response
+      if (message.type === "assistant" && message.message?.content) {
+        for (const block of message.message.content) {
+          if (block.type === "text") {
+            finalResponseText += block.text;
+          }
+        }
+      }
     }
 
-    // Make sure loading is stopped if it wasn't already
+    // Make sure loading is stopped
     if (!loadingStopped) {
       stopLoading();
+    } else {
+      stopLoading(); // Stop the "Creating your profile" loading
     }
   } catch (error: any) {
     // Make sure loading is stopped on error
     stopLoading();
-    // If the SDK query fails, fall back to basic profile
     console.error("Error during clarifying questions:", error.message);
   }
 
-  // Build learner profile from collected answers
-  return buildLearnerProfile(userAnswer, collectedAnswers);
-}
+  // Parse profile from Claude's response
+  const generatedProfile = parseProfileFromResponse(finalResponseText);
 
-/**
- * Build a LearnerProfile from the collected answers
- */
-function buildLearnerProfile(
-  projectIdea: string,
-  answers: Record<string, string>,
-): LearnerProfile {
-  // Map collected answers to profile fields
-  // The header keys from questions map to our profile structure
-
-  // Default values if answers weren't collected
-  let experienceLevel: LearnerProfile["experienceLevel"] = "complete-beginner";
-  let projectType = "cli";
-  let projectPurpose = "learn";
-  let projectFeatures = "minimal";
-
-  // Map experience answers
-  const expAnswer =
-    answers["experience"] || answers["level"] || answers["coding"] || "";
-  if (expAnswer.includes("beginner") || expAnswer.includes("never")) {
-    experienceLevel = "complete-beginner";
-  } else if (
-    expAnswer.includes("some") ||
-    expAnswer.includes("html") ||
-    expAnswer.includes("css")
-  ) {
-    experienceLevel = "some-experience";
-  } else if (
-    expAnswer.includes("know") ||
-    expAnswer.includes("basic") ||
-    expAnswer.includes("coded")
-  ) {
-    experienceLevel = "know-basics";
+  if (generatedProfile) {
+    // Log profile creation
+    logInteraction("profile_generated", {
+      metadata: {
+        profile: generatedProfile,
+        answersCollected: collectedAnswers,
+      },
+    });
+    return generatedProfile;
   }
 
-  // Map app type answers
-  const typeAnswer =
-    answers["type"] || answers["app"] || answers["application"] || "";
-  if (
-    typeAnswer.includes("cli") ||
-    typeAnswer.includes("command") ||
-    typeAnswer.includes("terminal")
-  ) {
-    projectType = "cli";
-  } else if (typeAnswer.includes("web") || typeAnswer.includes("browser")) {
-    projectType = "web";
-  } else if (
-    typeAnswer.includes("api") ||
-    typeAnswer.includes("backend") ||
-    typeAnswer.includes("server")
-  ) {
-    projectType = "api";
-  } else if (typeAnswer.includes("script") || typeAnswer.includes("automat")) {
-    projectType = "script";
-  }
-
-  // Map purpose answers
-  const purposeAnswer =
-    answers["purpose"] || answers["help"] || answers["do"] || "";
-  if (
-    purposeAnswer.includes("organiz") ||
-    purposeAnswer.includes("track") ||
-    purposeAnswer.includes("list") ||
-    purposeAnswer.includes("todo")
-  ) {
-    projectPurpose = "organize";
-  } else if (
-    purposeAnswer.includes("calculat") ||
-    purposeAnswer.includes("process") ||
-    purposeAnswer.includes("data") ||
-    purposeAnswer.includes("math")
-  ) {
-    projectPurpose = "calculate";
-  } else if (
-    purposeAnswer.includes("communicat") ||
-    purposeAnswer.includes("share") ||
-    purposeAnswer.includes("message")
-  ) {
-    projectPurpose = "communicate";
-  } else if (
-    purposeAnswer.includes("learn") ||
-    purposeAnswer.includes("practice") ||
-    purposeAnswer.includes("educat")
-  ) {
-    projectPurpose = "learn";
-  }
-
-  // Map feature answers
-  const featureAnswer = answers["feature"] || answers["important"] || "";
-  if (
-    featureAnswer.includes("simple") ||
-    featureAnswer.includes("minimal") ||
-    featureAnswer.includes("basic")
-  ) {
-    projectFeatures = "minimal";
-  } else if (
-    featureAnswer.includes("save") ||
-    featureAnswer.includes("load") ||
-    featureAnswer.includes("persist") ||
-    featureAnswer.includes("remember")
-  ) {
-    projectFeatures = "persistence";
-  } else if (
-    featureAnswer.includes("ui") ||
-    featureAnswer.includes("friendly") ||
-    featureAnswer.includes("format") ||
-    featureAnswer.includes("color")
-  ) {
-    projectFeatures = "ui";
-  } else if (
-    featureAnswer.includes("command") ||
-    featureAnswer.includes("multiple") ||
-    featureAnswer.includes("action")
-  ) {
-    projectFeatures = "commands";
-  }
-
-  return {
-    experienceLevel,
-    projectIdea,
-    projectType,
-    projectPurpose,
-    projectFeatures,
+  // Fallback if Claude didn't output valid profile JSON
+  const fallbackProfile: LearnerProfile = {
+    projectIdea: userAnswer,
+    experienceLevel: collectedAnswers["experience"] || collectedAnswers["level"] || "unknown",
+    projectType: collectedAnswers["type"] || collectedAnswers["app"] || undefined,
+    projectGoals: collectedAnswers["goals"] || collectedAnswers["purpose"] || undefined,
+    profileSummary: `User wants to build: ${userAnswer}`,
   };
+
+  logInteraction("profile_generated", {
+    metadata: {
+      profile: fallbackProfile,
+      answersCollected: collectedAnswers,
+      fallback: true,
+    },
+  });
+
+  return fallbackProfile;
 }

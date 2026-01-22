@@ -20,33 +20,49 @@ export interface CurriculumProgress {
 }
 
 /**
- * Get context strings based on experience level
+ * Get context strings based on experience level (now flexible string-based)
  */
-function getExperienceContext(level: LearnerProfile['experienceLevel']): {
+function getExperienceContext(experienceLevel: string): {
   target: string;
   pacing: string;
   complexity: string;
 } {
-  switch (level) {
-    case 'complete-beginner':
-      return {
-        target: 'complete beginners who have never coded before',
-        pacing: 'very slow with lots of explanation for every concept',
-        complexity: 'keep code extremely simple, explain every line'
-      };
-    case 'some-experience':
-      return {
-        target: 'learners with some coding experience (HTML/CSS or another language)',
-        pacing: 'moderate pace, explain TypeScript-specific concepts',
-        complexity: 'can use slightly more advanced patterns'
-      };
-    case 'know-basics':
-      return {
-        target: 'learners who know programming basics but are new to TypeScript',
-        pacing: 'faster pace, focus on TypeScript features and best practices',
-        complexity: 'can use intermediate patterns and type system features'
-      };
+  // Normalize for comparison
+  const level = experienceLevel.toLowerCase();
+
+  // Detect beginner indicators
+  if (level.includes('never') || level.includes('no experience') || level.includes('complete beginner') || level.includes('first time')) {
+    return {
+      target: 'complete beginners who have never coded before',
+      pacing: 'very slow with lots of explanation for every concept',
+      complexity: 'keep code extremely simple, explain every line'
+    };
   }
+
+  // Detect some experience indicators
+  if (level.includes('some') || level.includes('html') || level.includes('css') || level.includes('basic') || level.includes('little')) {
+    return {
+      target: 'learners with some coding experience',
+      pacing: 'moderate pace, explain TypeScript-specific concepts',
+      complexity: 'can use slightly more advanced patterns'
+    };
+  }
+
+  // Detect intermediate+ indicators
+  if (level.includes('know') || level.includes('familiar') || level.includes('experience') || level.includes('worked with')) {
+    return {
+      target: 'learners who know programming basics',
+      pacing: 'faster pace, focus on TypeScript features and best practices',
+      complexity: 'can use intermediate patterns and type system features'
+    };
+  }
+
+  // Default to beginner-friendly
+  return {
+    target: experienceLevel || 'learners new to coding',
+    pacing: 'measured pace with clear explanations',
+    complexity: 'straightforward code with helpful comments'
+  };
 }
 
 /**
@@ -76,8 +92,10 @@ LEARNER CONTEXT:
 - Pacing: ${experienceContext.pacing}
 - Complexity: ${experienceContext.complexity}
 ${learnerProfile?.projectType ? `- Project type: ${learnerProfile.projectType}` : ''}
-${learnerProfile?.projectPurpose ? `- Project purpose: ${learnerProfile.projectPurpose}` : ''}
-${learnerProfile?.projectFeatures ? `- Key feature focus: ${learnerProfile.projectFeatures}` : ''}
+${learnerProfile?.projectGoals ? `- Project goals: ${learnerProfile.projectGoals}` : ''}
+${learnerProfile?.technicalContext ? `- Technical context: ${learnerProfile.technicalContext}` : ''}
+${learnerProfile?.constraints ? `- Constraints: ${learnerProfile.constraints}` : ''}
+${learnerProfile?.profileSummary ? `- Learner summary: ${learnerProfile.profileSummary}` : ''}
 
 RULES:
 - Each segment should teach ONE concept while building toward the project
@@ -118,8 +136,8 @@ OUTPUT FORMAT (JSON only, no markdown):
 Project name: ${projectName}
 ${learnerProfile ? `Learner: ${experienceContext.target}
 App type: ${learnerProfile.projectType || 'general'}
-Purpose: ${learnerProfile.projectPurpose || 'learning'}
-Focus: ${learnerProfile.projectFeatures || 'basics'}` : 'Target: Complete beginners learning TypeScript'}
+Goals: ${learnerProfile.projectGoals || 'learning to code'}
+${learnerProfile.profileSummary ? `Summary: ${learnerProfile.profileSummary}` : ''}` : 'Target: Complete beginners learning TypeScript'}
 
 Generate segments that specifically build this project, not generic exercises. Each segment should add real functionality to the project.`;
 

@@ -11,7 +11,8 @@ export interface LogInteractionRequest {
     | "clarifying_question"
     | "user_selection"
     | "llm_response"
-    | "profile_created";
+    | "profile_created"
+    | "profile_generated";
   question_text?: string;
   answer_text?: string;
   question_index?: number;

@@ -76,7 +76,7 @@ import {
 } from "./display.js";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
 import type { Curriculum, TutorState, LearnerProfile } from "./types.js";
-import { askClarifyingQuestions } from "./questions.js";
+import { askClarifyingQuestions, type QuestionContext } from "./questions.js";
 import { loginCommand } from "./auth.js";
 
 // Shell commands that should be executed directly
@@ -279,14 +279,23 @@ async function startCommand(projectDir: string): Promise<void> {
   };
 
   try {
-    // Try to get personalized question from backend
+    // Try to get personalized question and context from backend
     let promptQuestion = "What do you want to build?";
+    let questionContext: QuestionContext = {};
+
     try {
       const { callInitEndpoint } = await import("./auth.js");
       const initResponse = await callInitEndpoint();
-      console.log("got init respoonse", initResponse);
-      if (initResponse.success && initResponse.question) {
-        promptQuestion = initResponse.question;
+      if (initResponse.success) {
+        if (initResponse.question) {
+          promptQuestion = initResponse.question;
+        }
+        // Build context from init response for smarter questions
+        questionContext = {
+          userEmail: initResponse.email,
+          totalMessages: initResponse.totalMessages,
+          initialQuestion: initResponse.question,
+        };
       }
     } catch (error) {
       // Silently fall back to default prompt if init endpoint fails
@@ -305,12 +314,13 @@ async function startCommand(projectDir: string): Promise<void> {
       answer_text: projectName.trim(),
     });
 
-    // Use dynamic questions based on project idea
+    // Use dynamic questions based on project idea and backend context
     displayInfo("Let me understand your project better:");
     const learnerProfile = await askClarifyingQuestions(
       promptQuestion,
       projectName.trim(),
       rl,
+      questionContext,
     );
 
     // Log profile creation
