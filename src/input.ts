@@ -144,9 +144,10 @@ export function createMultiQuestionWizard(
       const totalLines = getQuestionDisplayLines(currentQuestionIndex);
 
       if (clearFirst) {
-        process.stdout.write(`\x1B[${totalLines}A`);
+        // Cursor is at end of bottom bar, move up totalLines-1 to top bar
+        process.stdout.write(`\x1B[${totalLines - 1}A\r`);
         for (let i = 0; i < totalLines; i++) {
-          process.stdout.write('\r\x1B[K\n');
+          process.stdout.write('\x1B[K\n');
         }
         process.stdout.write(`\x1B[${totalLines}A`);
       }
@@ -209,9 +210,9 @@ export function createMultiQuestionWizard(
           : '↑↓ select • Enter confirm • ←→ navigate';
       console.log(colors.dim(`  ${navHint}`));
 
-      // Bottom bar
+      // Bottom bar (no trailing newline to prevent blank line below box)
       process.stdout.write('\r\x1B[K');
-      console.log(drawBar());
+      process.stdout.write(drawBar());
     };
 
     const drawSummary = (clearFirst: boolean = false) => {
@@ -219,10 +220,12 @@ export function createMultiQuestionWizard(
 
       if (clearFirst) {
         // Clear previous display (could be question or summary)
-        const prevLines = showingSummary ? totalLines : getQuestionDisplayLines(currentQuestionIndex);
-        process.stdout.write(`\x1B[${prevLines}A`);
+        // Note: showingSummary is set to true BEFORE this is called when transitioning from question
+        const prevLines = getQuestionDisplayLines(currentQuestionIndex);
+        // Cursor is at end of bottom bar, move up prevLines-1 to top bar
+        process.stdout.write(`\x1B[${prevLines - 1}A\r`);
         for (let i = 0; i < Math.max(prevLines, totalLines); i++) {
-          process.stdout.write('\r\x1B[K\n');
+          process.stdout.write('\x1B[K\n');
         }
         process.stdout.write(`\x1B[${Math.max(prevLines, totalLines)}A`);
       }
@@ -267,22 +270,27 @@ export function createMultiQuestionWizard(
         console.log(colors.dim('  ↑↓ select • Enter to edit • ↓ to Submit'));
       }
 
-      // Bottom bar
+      // Bottom bar (no trailing newline to prevent blank line below box)
       process.stdout.write('\r\x1B[K');
-      console.log(drawBar());
+      process.stdout.write(drawBar());
     };
 
     const redrawQuestion = () => {
       const totalLines = getQuestionDisplayLines(currentQuestionIndex);
-      process.stdout.write(`\x1B[${totalLines}A`);
+      // Cursor is at end of bottom bar line, move up (totalLines - 1) to reach top bar
+      process.stdout.write(`\x1B[${totalLines - 1}A\r`);
       drawQuestion();
     };
 
     const redrawSummary = () => {
       const totalLines = getSummaryDisplayLines();
-      process.stdout.write(`\x1B[${totalLines}A`);
+      // Cursor is at end of bottom bar line, move up (totalLines - 1) to reach top bar
+      process.stdout.write(`\x1B[${totalLines - 1}A\r`);
       drawSummary();
     };
+
+    // Hide cursor during selection
+    process.stdout.write('\x1B[?25l');
 
     // Initial draw
     drawQuestion();
@@ -297,6 +305,7 @@ export function createMultiQuestionWizard(
     let escapeTimeout: NodeJS.Timeout | null = null;
 
     const cleanup = () => {
+      process.stdout.write('\x1B[?25h'); // Show cursor again
       process.stdin.pause(); // Stop receiving data during transition
       process.stdin.setRawMode(false);
       process.stdin.removeListener('data', handleKeypress);
@@ -305,6 +314,7 @@ export function createMultiQuestionWizard(
 
     const processKey = (key: string) => {
       if (key === '\x03') {
+        process.stdout.write('\x1B[?25h'); // Show cursor before exit
         cleanup();
         console.log('\n');
         process.exit(0);
@@ -326,9 +336,10 @@ export function createMultiQuestionWizard(
             // Submit
             cleanup();
             const totalLines = getSummaryDisplayLines();
-            process.stdout.write(`\x1B[${totalLines}A`);
+            // Cursor is at end of bottom bar, move up totalLines-1 to top bar
+            process.stdout.write(`\x1B[${totalLines - 1}A\r`);
             for (let i = 0; i < totalLines; i++) {
-              process.stdout.write('\r\x1B[K\n');
+              process.stdout.write('\x1B[K\n');
             }
             process.stdout.write(`\x1B[${totalLines}A`);
 
@@ -339,9 +350,16 @@ export function createMultiQuestionWizard(
             resolve(result);
           } else {
             // Go back to edit that question
+            const summaryLines = getSummaryDisplayLines();
             currentQuestionIndex = summarySelectedIndex;
             showingSummary = false;
-            drawSummary(true);
+            const questionLines = getQuestionDisplayLines(currentQuestionIndex);
+            // Clear summary and draw question (cursor is at end of bottom bar)
+            process.stdout.write(`\x1B[${summaryLines - 1}A\r`);
+            for (let i = 0; i < Math.max(summaryLines, questionLines); i++) {
+              process.stdout.write('\x1B[K\n');
+            }
+            process.stdout.write(`\x1B[${Math.max(summaryLines, questionLines)}A`);
             drawQuestion();
           }
         }
@@ -365,10 +383,10 @@ export function createMultiQuestionWizard(
           const prevLines = getQuestionDisplayLines(currentQuestionIndex);
           currentQuestionIndex--;
           const newLines = getQuestionDisplayLines(currentQuestionIndex);
-          // Clear and redraw
-          process.stdout.write(`\x1B[${prevLines}A`);
+          // Clear and redraw (cursor is at end of bottom bar, move up prevLines-1 to top bar)
+          process.stdout.write(`\x1B[${prevLines - 1}A\r`);
           for (let i = 0; i < Math.max(prevLines, newLines); i++) {
-            process.stdout.write('\r\x1B[K\n');
+            process.stdout.write('\x1B[K\n');
           }
           process.stdout.write(`\x1B[${Math.max(prevLines, newLines)}A`);
           drawQuestion();
@@ -379,9 +397,10 @@ export function createMultiQuestionWizard(
           const prevLines = getQuestionDisplayLines(currentQuestionIndex);
           currentQuestionIndex++;
           const newLines = getQuestionDisplayLines(currentQuestionIndex);
-          process.stdout.write(`\x1B[${prevLines}A`);
+          // Clear and redraw (cursor is at end of bottom bar, move up prevLines-1 to top bar)
+          process.stdout.write(`\x1B[${prevLines - 1}A\r`);
           for (let i = 0; i < Math.max(prevLines, newLines); i++) {
-            process.stdout.write('\r\x1B[K\n');
+            process.stdout.write('\x1B[K\n');
           }
           process.stdout.write(`\x1B[${Math.max(prevLines, newLines)}A`);
           drawQuestion();
@@ -395,9 +414,10 @@ export function createMultiQuestionWizard(
           const prevLines = getQuestionDisplayLines(currentQuestionIndex);
           currentQuestionIndex++;
           const newLines = getQuestionDisplayLines(currentQuestionIndex);
-          process.stdout.write(`\x1B[${prevLines}A`);
+          // Clear and redraw (cursor is at end of bottom bar, move up prevLines-1 to top bar)
+          process.stdout.write(`\x1B[${prevLines - 1}A\r`);
           for (let i = 0; i < Math.max(prevLines, newLines); i++) {
-            process.stdout.write('\r\x1B[K\n');
+            process.stdout.write('\x1B[K\n');
           }
           process.stdout.write(`\x1B[${Math.max(prevLines, newLines)}A`);
           drawQuestion();

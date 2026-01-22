@@ -166,7 +166,7 @@ Generate segments that specifically build this project, not generic exercises. E
       const newSegmentCount = (fullText.match(/"type":\s*"(build|refactor)"/g) || []).length;
       if (newSegmentCount > lastSegmentCount) {
         lastSegmentCount = newSegmentCount;
-        progress?.onStep(`Creating segment ${newSegmentCount}...`);
+        progress?.onStep(`Creating step ${newSegmentCount}...`);
       }
     });
 
