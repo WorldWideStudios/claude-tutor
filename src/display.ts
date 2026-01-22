@@ -1,5 +1,7 @@
 import chalk from 'chalk';
-import type { Curriculum, TutorState, Segment } from './types.js';
+import type { Curriculum, TutorState, Segment, TutorMode } from './types.js';
+import { TUTOR_MODES } from './types.js';
+import { getMode, getModeInfo } from './mode.js';
 
 /**
  * CLI Display Module - Enhanced UX
@@ -19,6 +21,7 @@ const colors = {
   warning: noColor ? chalk.reset : chalk.yellow,
   orange: noColor ? chalk.reset : chalk.hex('#F59E0B'),
   tan: noColor ? chalk.reset : chalk.hex('#D4A574'),  // Light tan for Typer Shark untyped
+  purple: noColor ? chalk.reset : chalk.hex('#A855F7'),  // Purple for discuss mode
   text: noColor ? chalk.reset : chalk.white,
   dim: noColor ? chalk.reset : chalk.gray,
   muted: noColor ? chalk.reset : chalk.dim,
@@ -96,7 +99,7 @@ export function displayWelcome(currentSkill?: string): void {
   clearScreen();
   console.log();
 
-  const title = 'Claude Code Tutor';
+  const title = 'Claude Tutor';
   const version = 'v0.1.0';
   const tagline = 'Learn to code like an engineer';
   const skillLine = currentSkill ? `Learning: ${currentSkill}` : '';
@@ -528,16 +531,72 @@ export function displayInfo(message: string): void {
 }
 
 /**
- * Display input prompt with top/bottom bars
- * Creates an entry field look with gray lines above and below the input area
+ * Mode display info with colors and descriptions
+ */
+const MODE_DISPLAY: Record<string, { color: typeof colors.tan; label: string; description: string }> = {
+  tutor: {
+    color: colors.tan,
+    label: 'tutor',
+    description: 'line by line',
+  },
+  block: {
+    color: colors.primary,  // green
+    label: 'code',
+    description: 'freely',
+  },
+  discuss: {
+    color: colors.purple,
+    label: 'discuss',
+    description: 'ideas and ask questions',
+  },
+};
+
+/**
+ * Get mode indicator string with color coding
+ * Shows only current mode: "tutor" (in color) + "line by line (shift+tab to cycle)" (gray)
+ */
+export function getModeIndicator(): string {
+  const current = getMode();
+  const display = MODE_DISPLAY[current];
+  return display.color(display.label) + colors.dim(` ${display.description} (shift+tab to cycle)`);
+}
+
+/**
+ * Display mode footer below input area
+ * Shows only current mode: tutor (colored) line by line (shift+tab to cycle) (gray)
+ */
+export function displayModeFooter(): void {
+  console.log(getModeIndicator());
+}
+
+/**
+ * Display mode footer inline (without newline) for redraw operations
+ */
+function displayModeFooterInline(): void {
+  process.stdout.write(getModeIndicator());
+}
+
+/**
+ * Display mode status bar at bottom
+ * Shows: tutor line by line (shift+tab to cycle)
+ */
+export function displayModeBar(): void {
+  console.log(getModeIndicator());
+}
+
+/**
+ * Display input prompt with mode bar and entry field
+ * Creates an entry field look with mode indicator and gray bars
  */
 export function displayPrompt(): void {
   console.log();
+  // Mode status bar
+  displayModeBar();
   // Top bar - creates upper border of entry field
   console.log(drawBar());
 
-  // Input prompt
-  process.stdout.write(colors.primary(symbols.arrow + ' '));
+  // Input prompt (gray caret)
+  process.stdout.write(colors.dim(symbols.arrow + ' '));
 }
 
 /**
@@ -802,14 +861,21 @@ export function displayTyperSharkInput(input: string, prompt: string = '› '): 
 
 /**
  * Redraw both target and input lines for Typer Shark mode
- * Accounts for the gray bar between target and input
+ * Accounts for the gray bars above/below input and mode footer
+ * Structure:
+ *   target text
+ *   ──────────── (top bar)
+ *   › input
+ *   ──────────── (bottom bar)
+ *   mode footer
  */
 export function redrawTyperShark(expected: string, input: string, correctCount: number): void {
   if (!process.stdout.isTTY) return;
 
-  // Move up two lines (over gray bar and target), clear, draw target
+  // Move up 2 lines (from input line, past top bar, to target line)
   process.stdout.write('\x1B[2A\r\x1B[K');
 
+  // Draw target
   let targetOutput = '  ';
   for (let i = 0; i < expected.length; i++) {
     if (i < correctCount) {
@@ -820,13 +886,26 @@ export function redrawTyperShark(expected: string, input: string, correctCount: 
   }
   process.stdout.write(targetOutput);
 
-  // Move down to gray bar line, redraw it
+  // Move down to top bar, redraw it
   process.stdout.write('\n\r\x1B[K');
   process.stdout.write(drawBar());
 
   // Move down, clear, draw input
   process.stdout.write('\n\r\x1B[K');
-  process.stdout.write(colors.primary('› ') + input);
+  process.stdout.write(colors.dim('› ') + input);
+
+  // Move down, redraw bottom bar
+  process.stdout.write('\n\r\x1B[K');
+  process.stdout.write(drawBar());
+
+  // Move down, redraw mode footer
+  process.stdout.write('\n\r\x1B[K');
+  displayModeFooterInline();
+
+  // Move cursor back up to input line
+  process.stdout.write('\x1B[2A');
+  // Position cursor at end of input
+  process.stdout.write(`\r${colors.dim('› ')}${input}`);
 }
 
 /**
@@ -846,6 +925,13 @@ export function clearForTyperShark(linesToClear: number = 0): void {
 /**
  * Initialize Typer Shark display with target line and input prompt
  * Includes gray lines above and below to create an entry field look
+ * Structure:
+ *   // explanation (optional)
+ *   target text (tan)
+ *   ──────────── (top bar)
+ *   › (input prompt)
+ *   ──────────── (bottom bar)
+ *   mode footer
  */
 export function initTyperSharkDisplay(expected: string, explanation?: string): void {
   console.log();
@@ -856,17 +942,25 @@ export function initTyperSharkDisplay(expected: string, explanation?: string): v
   console.log('  ' + colors.tan(expected));
   // Top gray line - upper border of entry field
   console.log(drawBar());
-  // Show input prompt
-  process.stdout.write(colors.primary('› '));
+  // Show input prompt (cursor will be here)
+  console.log(colors.dim('› '));
+  // Bottom gray line - lower border of entry field
+  console.log(drawBar());
+  // Mode footer
+  displayModeFooter();
+  // Move cursor back up to input line (3 lines up: after mode footer -> mode footer -> bottom bar -> input)
+  process.stdout.write('\x1B[3A');
+  // Position cursor after prompt
+  process.stdout.write('\r' + colors.dim('› '));
 }
 
 /**
- * Finish Typer Shark display with bottom gray line
- * Includes blank line below for future helper text and to lift entry area from bottom
+ * Finish Typer Shark display
+ * Cursor is on input line, move down past bottom bar and mode footer
  */
 export function finishTyperSharkDisplay(): void {
-  console.log(drawBar());
-  console.log(); // Blank line below for future helper text
+  // Move down past bottom bar and mode footer (2 lines)
+  process.stdout.write('\x1B[2B\n');
 }
 
 // ============================================
@@ -882,116 +976,200 @@ export interface MultiLineState {
 
 /**
  * Initialize multi-line Typer Shark display
- * Shows all lines with comments in gray, code in yellow/green
- * Includes gray lines above and below to create an entry field look
+ * Shows brief explanation, then all lines with comments in gray, code in yellow/green
+ * @param lines - code lines with comments
+ * @param currentLineIndex - which line user is currently on
  * @param linesToClear - number of previous lines to clear (to remove raw streamed code)
+ * @param explanation - brief 1-2 line description of what's being built
  */
-export function initMultiLineTyperShark(
-  lines: Array<{ comment: string; code: string }>,
-  currentLineIndex: number = 0,
-  linesToClear: number = 0
+/**
+ * Initialize terminal-style multi-line input display
+ * Shows expected code as reference, with input area below
+ * Characters turn green as user types correctly across all lines
+ * Structure:
+ *   explanation (optional)
+ *   Expected:
+ *   code line 1 (tan)
+ *   code line 2 (tan)
+ *   ...
+ *   ──────────── (top bar)
+ *   › (input)
+ *   ──────────── (bottom bar)
+ *   mode footer
+ *
+ * @param expectedLines - array of code lines (just the code, no comments)
+ * @param linesToClear - lines of raw streamed output to clear first
+ * @param explanation - brief explanation shown at top
+ */
+export function initTerminalMultiLine(
+  expectedLines: string[],
+  linesToClear: number = 0,
+  explanation?: string
 ): void {
   // Clear the raw streamed code that was displayed before
   if (linesToClear > 0) {
     clearForTyperShark(linesToClear);
   }
 
-  // NOTE: redrawMultiLineTyperShark expects exactly (lines.length * 2 + 1) lines above cursor
-
-  for (let i = 0; i < lines.length; i++) {
-    const { comment, code } = lines[i];
-
-    // Show comment in gray
-    console.log(colors.dim(`  // ${comment}`));
-
-    // Show code line - green if completed, yellow if current/pending
-    if (i < currentLineIndex) {
-      // Completed line - all green
-      console.log('  ' + colors.success(code));
-    } else if (i === currentLineIndex) {
-      // Current line - yellow (will be tracked)
-      console.log('  ' + colors.tan(code));
-    } else {
-      // Future line - dim yellow
-      console.log('  ' + colors.dim(code));
-    }
+  // Show brief explanation if provided
+  if (explanation) {
+    console.log(colors.dim(explanation));
   }
 
-  // Top gray line - upper border of entry field (directly above input prompt)
+  // Show expected code (all in tan - will turn green as typed)
+  console.log(colors.dim('  Expected:'));
+  for (const line of expectedLines) {
+    console.log('  ' + colors.tan(line));
+  }
+
+  // Top gray bar separating expected from input
   console.log(drawBar());
-  // Show input prompt (no blank line between gray bar and prompt)
-  process.stdout.write(colors.primary('› '));
+
+  // Initial input prompt (with newline so we can draw bottom elements)
+  console.log(colors.dim('› '));
+
+  // Bottom gray bar
+  console.log(drawBar());
+
+  // Mode footer
+  displayModeFooter();
+
+  // Move cursor back up to input line (3 lines up: after mode footer newline -> mode footer -> bottom bar -> input)
+  process.stdout.write('\x1B[3A');
+  // Position cursor after prompt (no need to rewrite caret, it's already there from console.log)
+  process.stdout.write('\r\x1B[K' + colors.dim('› '));
 }
 
 /**
- * Redraw multi-line Typer Shark display
- * Moves cursor up, redraws all lines, then input
- * Accounts for the gray bar between code lines and input
+ * Redraw terminal-style multi-line input
+ * Shows expected code with green progress, then user's input lines below
+ * Structure:
+ *   explanation (optional)
+ *   Expected:
+ *   code lines (green/tan)
+ *   ──────────── (top bar)
+ *   › input line 1
+ *   > input line 2
+ *   ...
+ *   > current input
+ *   ──────────── (bottom bar)
+ *   mode footer
+ *
+ * @param expectedLines - array of expected code lines
+ * @param expectedText - full expected text (lines joined with \n)
+ * @param correctCount - number of correctly typed characters
+ * @param inputLines - array of lines user has typed so far
+ * @param currentLineInput - current line being typed
+ * @param hasExplanation - whether explanation line was shown
  */
+export function redrawTerminalMultiLine(
+  expectedLines: string[],
+  expectedText: string,
+  correctCount: number,
+  inputLines: string[],
+  currentLineInput: string,
+  hasExplanation: boolean = false
+): void {
+  if (!process.stdout.isTTY) return;
+
+  // Calculate total lines above cursor (cursor is on current input line):
+  // - explanation (if present): 1
+  // - "Expected:" label: 1
+  // - expected code lines: expectedLines.length
+  // - top gray bar: 1
+  // - input lines (completed): inputLines.length
+  const totalLinesAboveCursor = (hasExplanation ? 1 : 0) + 1 + expectedLines.length + 1 + inputLines.length;
+
+  // Move cursor up to top of display (from current input line to Expected: label)
+  process.stdout.write(`\x1B[${totalLinesAboveCursor}A`);
+
+  // Redraw explanation if present
+  if (hasExplanation) {
+    process.stdout.write('\r\x1B[K\n');
+  }
+
+  // "Expected:" label
+  process.stdout.write('\r\x1B[K');
+  process.stdout.write(colors.dim('  Expected:'));
+  process.stdout.write('\n');
+
+  // Redraw expected code with green progress
+  let charIndex = 0;
+  for (let lineIdx = 0; lineIdx < expectedLines.length; lineIdx++) {
+    const line = expectedLines[lineIdx];
+    process.stdout.write('\r\x1B[K  ');
+
+    // Draw each character - green if typed correctly, tan if not yet
+    for (let i = 0; i < line.length; i++) {
+      if (charIndex < correctCount) {
+        process.stdout.write(colors.success(line[i]));
+      } else {
+        process.stdout.write(colors.tan(line[i]));
+      }
+      charIndex++;
+    }
+    process.stdout.write('\n');
+
+    // Account for newline character in expected text (except after last line)
+    if (lineIdx < expectedLines.length - 1) {
+      charIndex++; // for the \n
+    }
+  }
+
+  // Top gray bar
+  process.stdout.write('\r\x1B[K');
+  process.stdout.write(drawBar());
+  process.stdout.write('\n');
+
+  // Redraw completed input lines
+  for (let i = 0; i < inputLines.length; i++) {
+    process.stdout.write('\r\x1B[K');
+    const prompt = i === 0 ? colors.dim('› ') : colors.dim('> ');
+    process.stdout.write(prompt + inputLines[i]);
+    process.stdout.write('\n');
+  }
+
+  // Current input line
+  process.stdout.write('\r\x1B[K');
+  const currentPrompt = inputLines.length === 0 ? colors.dim('› ') : colors.dim('> ');
+  process.stdout.write(currentPrompt + currentLineInput);
+  process.stdout.write('\n');
+
+  // Bottom gray bar
+  process.stdout.write('\r\x1B[K');
+  process.stdout.write(drawBar());
+  process.stdout.write('\n');
+
+  // Mode footer
+  process.stdout.write('\r\x1B[K');
+  displayModeFooterInline();
+
+  // Move cursor back up to current input line (2 lines up: mode footer, bottom bar)
+  process.stdout.write('\x1B[2A');
+  // Position cursor at end of current input
+  process.stdout.write(`\r${currentPrompt}${currentLineInput}`);
+}
+
+// Legacy functions kept for backwards compatibility
+export function initMultiLineTyperShark(
+  lines: Array<{ comment: string; code: string }>,
+  currentLineIndex: number = 0,
+  linesToClear: number = 0,
+  explanation?: string
+): void {
+  const expectedLines = lines.map(l => l.code);
+  initTerminalMultiLine(expectedLines, linesToClear, explanation);
+}
+
 export function redrawMultiLineTyperShark(
   lines: Array<{ comment: string; code: string }>,
   currentLineIndex: number,
   currentInput: string,
   correctCount: number,
-  completedLines: string[] = []
+  completedLines: string[] = [],
+  hasExplanation: boolean = false
 ): void {
-  if (!process.stdout.isTTY) return;
-
-  // Calculate how many lines to move up from current cursor position
-  // After init: cursor is at end of prompt line (no newline after prompt)
-  // Lines above cursor: (lines.length * 2) comment/code pairs + 1 gray bar = lines.length * 2 + 1
-  // Add extra buffer for text wrapping or any cursor position drift
-  const displayLines = lines.length * 2 + 1;
-  const extraBuffer = 3; // Extra lines to clear above in case of drift
-  const linesToMoveUp = displayLines + extraBuffer;
-
-  // Move cursor up to top of display (plus buffer)
-  process.stdout.write(`\x1B[${linesToMoveUp}A`);
-
-  // Clear the extra buffer lines first
-  for (let i = 0; i < extraBuffer; i++) {
-    process.stdout.write('\r\x1B[K\n');
-  }
-
-  // Redraw each line pair
-  for (let i = 0; i < lines.length; i++) {
-    const { comment, code } = lines[i];
-
-    // Clear and draw comment
-    process.stdout.write('\r\x1B[K');
-    process.stdout.write(colors.dim(`  // ${comment}`));
-    process.stdout.write('\n');
-
-    // Clear and draw code
-    process.stdout.write('\r\x1B[K');
-    if (i < currentLineIndex) {
-      // Completed line - show what the user actually typed in green
-      const userTyped = completedLines[i] || code;
-      process.stdout.write('  ' + colors.success(userTyped));
-    } else if (i === currentLineIndex) {
-      // Current line - show typing progress
-      let output = '  ';
-      for (let j = 0; j < code.length; j++) {
-        if (j < correctCount) {
-          output += colors.success(code[j]);
-        } else {
-          output += colors.tan(code[j]);
-        }
-      }
-      process.stdout.write(output);
-    } else {
-      // Future line - dim
-      process.stdout.write('  ' + colors.dim(code));
-    }
-    process.stdout.write('\n');
-  }
-
-  // Gray bar - upper border of entry field (directly above input prompt)
-  process.stdout.write('\r\x1B[K');
-  process.stdout.write(drawBar());
-  process.stdout.write('\n');
-
-  // Input prompt with current input (no blank line between gray bar and prompt)
-  process.stdout.write('\r\x1B[K');
-  process.stdout.write(colors.primary('› ') + currentInput);
+  const expectedLines = lines.map(l => l.code);
+  const expectedText = expectedLines.join('\n');
+  redrawTerminalMultiLine(expectedLines, expectedText, correctCount, completedLines, currentInput, hasExplanation);
 }

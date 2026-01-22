@@ -7,8 +7,12 @@ import {
   initTyperSharkDisplay,
   redrawTyperShark,
   finishTyperSharkDisplay,
+  initTerminalMultiLine,
+  redrawTerminalMultiLine,
   drawBar,
+  getModeIndicator,
 } from './display.js';
+import { cycleMode, getMode, isDiscussMode, isBlockMode, isTutorMode } from './mode.js';
 import chalk from 'chalk';
 
 // Colors for typing feedback
@@ -283,7 +287,9 @@ export function createMultiQuestionWizard(
     // Initial draw
     drawQuestion();
 
-    // Enable raw mode
+    // Enable raw mode for direct character input
+    // Note: We don't use rl.pause()/resume() because readline's internal listener
+    // still receives data even when paused, causing doubled character input.
     process.stdin.setRawMode(true);
     process.stdin.resume();
 
@@ -291,6 +297,7 @@ export function createMultiQuestionWizard(
     let escapeTimeout: NodeJS.Timeout | null = null;
 
     const cleanup = () => {
+      process.stdin.pause(); // Stop receiving data during transition
       process.stdin.setRawMode(false);
       process.stdin.removeListener('data', handleKeypress);
       if (escapeTimeout) clearTimeout(escapeTimeout);
@@ -441,7 +448,7 @@ export function createInteractiveSelect(
       console.log(question);
       options.forEach((opt, i) => console.log(`  ${i + 1}. ${opt.label}`));
       console.log(`  ${options.length + 1}. Other (type your own)`);
-      process.stdout.write(colors.primary('› '));
+      process.stdout.write(colors.dim('› '));
       rl.once('line', (input) => {
         const num = parseInt(input.trim());
         if (num > 0 && num <= options.length) {
@@ -603,7 +610,7 @@ export function createInteractiveSelect(
     // Initial draw
     drawOptions();
 
-    // Enable raw mode
+    // Enable raw mode for direct character input
     process.stdin.setRawMode(true);
     process.stdin.resume();
 
@@ -612,6 +619,7 @@ export function createInteractiveSelect(
     let escapeTimeout: NodeJS.Timeout | null = null;
 
     const cleanup = () => {
+      process.stdin.pause(); // Stop receiving data during transition
       process.stdin.setRawMode(false);
       process.stdin.removeListener('data', handleKeypress);
       if (escapeTimeout) clearTimeout(escapeTimeout);
@@ -927,6 +935,19 @@ export function extractExpectedCode(text: string): ExtractedCode | null {
         explanation: generateExplanation(codeContent),
         isMultiLine: false
       };
+    } else {
+      // Multi-line code block - parse into lines
+      const codeLines = codeContent.split('\n');
+      const multiLines: CodeLine[] = codeLines.map((line, idx) => ({
+        comment: idx === 0 ? 'Type the code below' : '',  // Only first line gets a comment
+        code: line
+      }));
+      return {
+        code: codeContent,
+        explanation: 'Type each line of code',
+        isMultiLine: true,
+        lines: multiLines
+      };
     }
   }
 
@@ -1087,6 +1108,50 @@ export function shouldTrackInput(claudeResponse: string): ExtractedCode | null {
 }
 
 // ============================================
+// NATURAL LANGUAGE DETECTION
+// ============================================
+
+/**
+ * Detect if input looks like a natural language question rather than code
+ * Used to let users ask questions while in code input mode
+ */
+function isNaturalLanguageQuestion(input: string, expectedCode: string): boolean {
+  const trimmed = input.trim().toLowerCase();
+
+  // Empty input is not a question
+  if (!trimmed) return false;
+
+  // If it matches the expected code closely, it's not a question
+  if (input.trim() === expectedCode.trim()) return false;
+
+  // Check for question patterns
+  const questionPatterns = [
+    /^(what|why|how|when|where|which|who|can|could|would|should|is|are|does|do|will)\s/i,
+    /\?$/,  // Ends with question mark
+    /^(help|explain|tell me|show me|i don't understand|i'm confused|what's|what is)/i,
+    /^(wait|hold on|stop|actually)/i,  // User wants to pause
+  ];
+
+  for (const pattern of questionPatterns) {
+    if (pattern.test(trimmed)) {
+      return true;
+    }
+  }
+
+  // If the input is very different from expected code (no code-like characters)
+  // and contains mostly words, it's likely natural language
+  const hasCodeChars = /[{}();=<>[\]`"']/.test(input);
+  const isAllWords = /^[a-zA-Z\s.,!?'-]+$/.test(trimmed);
+
+  if (!hasCodeChars && isAllWords && trimmed.split(/\s+/).length >= 3) {
+    // 3+ words with no code characters - likely a question/comment
+    return true;
+  }
+
+  return false;
+}
+
+// ============================================
 // TYPER SHARK - REAL-TIME CHARACTER INPUT
 // ============================================
 
@@ -1105,7 +1170,15 @@ export function createTyperSharkInput(
     // Non-TTY fallback to regular input
     if (!process.stdin.isTTY) {
       console.log(colors.dim(`  Type: ${expectedText}`));
-      process.stdout.write(colors.primary('› '));
+      process.stdout.write(colors.dim('› '));
+      rl.once('line', resolve);
+      return;
+    }
+
+    // Check mode - in discuss mode, skip Typer Shark and accept free input
+    if (isDiscussMode()) {
+      console.log(colors.dim(`  Expected: ${expectedText}`));
+      process.stdout.write(colors.dim('› '));
       rl.once('line', resolve);
       return;
     }
@@ -1116,25 +1189,40 @@ export function createTyperSharkInput(
     let inputBuffer = '';
     let correctCount = 0;
 
+    // Escape sequence buffer for handling Shift+Tab etc.
+    let escapeBuffer = '';
+    let escapeTimeout: NodeJS.Timeout | null = null;
+
     // Enable raw mode for character-by-character input
     process.stdin.setRawMode(true);
     process.stdin.resume();
 
-    const handleKeypress = (chunk: Buffer) => {
-      const key = chunk.toString();
+    const cleanup = () => {
+      process.stdin.pause(); // Stop receiving data during transition
+      process.stdin.setRawMode(false);
+      process.stdin.removeListener('data', handleKeypress);
+      if (escapeTimeout) clearTimeout(escapeTimeout);
+    };
 
+    const processKey = (key: string) => {
       // Ctrl+C - exit
       if (key === '\x03') {
-        process.stdin.setRawMode(false);
-        process.stdin.removeListener('data', handleKeypress);
+        cleanup();
         console.log('\n');
         process.exit(0);
       }
 
+      // Shift+Tab - cycle mode
+      if (key === '\x1b[Z') {
+        cycleMode();
+        // Immediately redraw with new mode (mode footer will update)
+        redrawTyperShark(expectedText, inputBuffer, isBlockMode() ? inputBuffer.length : correctCount);
+        return;
+      }
+
       // Enter - submit input
       if (key === '\r' || key === '\n') {
-        process.stdin.setRawMode(false);
-        process.stdin.removeListener('data', handleKeypress);
+        cleanup();
         console.log(); // New line after input
         finishTyperSharkDisplay(); // Draw bottom gray line
         resolve(inputBuffer);
@@ -1149,14 +1237,18 @@ export function createTyperSharkInput(
             correctCount--;
           }
           inputBuffer = inputBuffer.slice(0, -1);
-          redrawTyperShark(expectedText, inputBuffer, correctCount);
+          redrawTyperShark(expectedText, inputBuffer, isBlockMode() ? inputBuffer.length : correctCount);
         }
         return;
       }
 
-      // Escape - cancel (optional, could also just ignore)
+      // Ignore lone escape
       if (key === '\x1b') {
-        // Ignore escape or handle as needed
+        return;
+      }
+
+      // Ignore Tab (only Shift+Tab cycles mode)
+      if (key === '\t') {
         return;
       }
 
@@ -1164,16 +1256,44 @@ export function createTyperSharkInput(
       if (key.length === 1 && key >= ' ') {
         inputBuffer += key;
 
-        // Only increment correctCount if:
-        // 1. We're typing at the next sequential position (no gaps from mistakes)
-        // 2. The character matches the expected character
-        // This forces user to backspace and fix mistakes before progressing
-        const newCharPos = inputBuffer.length - 1;
-        if (newCharPos === correctCount && correctCount < expectedText.length && key === expectedText[correctCount]) {
-          correctCount++;
+        // In block mode, all characters count as "correct" (free typing)
+        if (isBlockMode()) {
+          correctCount = inputBuffer.length;
+        } else {
+          // Tutor mode: Only increment correctCount if character matches expected
+          const newCharPos = inputBuffer.length - 1;
+          if (newCharPos === correctCount && correctCount < expectedText.length && key === expectedText[correctCount]) {
+            correctCount++;
+          }
         }
 
         redrawTyperShark(expectedText, inputBuffer, correctCount);
+      }
+    };
+
+    const handleKeypress = (chunk: Buffer) => {
+      const data = chunk.toString();
+
+      // Handle escape sequences properly
+      for (const char of data) {
+        if (escapeBuffer.length > 0) {
+          escapeBuffer += char;
+          // Check if we have a complete escape sequence
+          if (escapeBuffer.length >= 3) {
+            if (escapeTimeout) clearTimeout(escapeTimeout);
+            processKey(escapeBuffer);
+            escapeBuffer = '';
+          }
+        } else if (char === '\x1b') {
+          escapeBuffer = char;
+          if (escapeTimeout) clearTimeout(escapeTimeout);
+          escapeTimeout = setTimeout(() => {
+            if (escapeBuffer === '\x1b') processKey('\x1b');
+            escapeBuffer = '';
+          }, 50);
+        } else {
+          processKey(char);
+        }
       }
     };
 
@@ -1182,16 +1302,30 @@ export function createTyperSharkInput(
 }
 
 /**
- * Create terminal-style multi-line input for heredocs
- * Works like a real terminal: each line stays visible after enter,
- * with a `> ` continuation prompt for each new line.
- * Gray bars above and below create the entry field look.
+ * Create terminal-style multi-line input for heredocs with Typer Shark feedback
+ * Mimics real terminal behavior:
+ * - Shows expected code as reference (turns green as matched)
+ * - User types in a growing input area below
+ * - Enter creates new line with continuation caret (doesn't submit)
+ * - Submits only when all expected text is typed correctly
+ *
+ * @param _rl - readline interface (unused in raw mode but kept for compatibility)
+ * @param lines - array of code lines with comments
+ * @param explanation - brief 1-2 line explanation of what's being built
+ * @param linesToClear - number of previously streamed lines to clear
  */
 export function createMultiLineTyperSharkInput(
   _rl: readline.Interface,
-  lines: CodeLine[]
+  lines: CodeLine[],
+  explanation?: string,
+  linesToClear: number = 0
 ): Promise<string[]> {
   return new Promise((resolve) => {
+    // Extract just the code lines
+    const expectedLines = lines.map(l => l.code);
+    // Full expected text with newlines between lines
+    const expectedText = expectedLines.join('\n');
+
     // Non-TTY fallback
     if (!process.stdin.isTTY) {
       console.log(colors.dim('Enter each line:'));
@@ -1199,7 +1333,7 @@ export function createMultiLineTyperSharkInput(
       const readline = require('readline');
       const simpleRl = readline.createInterface({ input: process.stdin, output: process.stdout });
       const collectSimple = (idx: number) => {
-        if (idx >= lines.length) {
+        if (idx >= expectedLines.length) {
           simpleRl.close();
           resolve(results);
           return;
@@ -1213,124 +1347,409 @@ export function createMultiLineTyperSharkInput(
       return;
     }
 
-    const completedLines: string[] = [];
-    let currentLineIndex = 0;
-    let inputBuffer = '';
+    // Check mode - in discuss mode, skip Typer Shark and accept free input
+    if (isDiscussMode()) {
+      console.log(colors.dim('  Expected code:'));
+      expectedLines.forEach(line => console.log(colors.dim(`    ${line}`)));
+      console.log();
+      process.stdout.write(colors.dim('› '));
 
-    // Add some spacing before the display instead of aggressive clearing
-    // The raw streamed output is handled by the display layer now
-    console.log();
+      // Collect all lines with regular readline
+      const readline = require('readline');
+      const simpleRl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      const results: string[] = [];
+      const collectSimple = (idx: number) => {
+        if (idx >= expectedLines.length) {
+          simpleRl.close();
+          resolve(results);
+          return;
+        }
+        simpleRl.question(`> `, (answer: string) => {
+          results.push(answer);
+          collectSimple(idx + 1);
+        });
+      };
+      collectSimple(0);
+      return;
+    }
 
-    // Draw the full display
-    const redraw = () => {
-      // Calculate how many lines we need to clear and redraw
-      // Structure: top bar, hint (2 lines), completed lines, current input, bottom bar
-      const totalLines = 2 + 2 + completedLines.length + 1 + 1; // bar + hint + completed + input + bar
+    const inputLines: string[] = []; // Completed input lines
+    let currentLineInput = ''; // Current line being typed
+    let correctCount = 0; // Characters correctly typed across ALL expected text
+    const hasExplanation = !!explanation;
 
-      // Move to top and clear everything
-      if (completedLines.length > 0 || inputBuffer.length > 0) {
-        process.stdout.write(`\x1B[${totalLines}A`); // Move up
+    // Escape sequence buffer for handling Shift+Tab
+    let escapeBuffer = '';
+    let escapeTimeout: NodeJS.Timeout | null = null;
+
+    // Initialize display
+    initTerminalMultiLine(expectedLines, linesToClear, explanation);
+
+    // Enable raw mode for direct character input
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+
+    // Get current full input text (for comparison with expected)
+    const getFullInput = () => {
+      if (inputLines.length === 0) {
+        return currentLineInput;
       }
-
-      // Top gray bar
-      process.stdout.write('\r\x1B[K');
-      console.log(drawBar());
-
-      // Hint for current line (comment + expected code)
-      const currentLine = lines[currentLineIndex];
-      process.stdout.write('\r\x1B[K');
-      console.log(colors.dim(`  // ${currentLine.comment}`));
-      process.stdout.write('\r\x1B[K');
-      console.log(colors.dim(`  ${currentLine.code}`));
-
-      // Show all completed lines
-      for (let i = 0; i < completedLines.length; i++) {
-        process.stdout.write('\r\x1B[K');
-        const expected = lines[i].code;
-        const enteredLine = completedLines[i];
-        const isCorrect = enteredLine === expected;
-        console.log(colors.success('> ') + (isCorrect ? colors.success(enteredLine) : chalk.white(enteredLine)));
-      }
-
-      // Current input line
-      process.stdout.write('\r\x1B[K');
-      process.stdout.write(colors.success('> ') + inputBuffer);
-
-      // Save cursor position, draw bottom bar, restore cursor
-      process.stdout.write('\x1B[s'); // Save cursor
-      console.log(); // Move to next line
-      process.stdout.write('\r\x1B[K');
-      process.stdout.write(drawBar());
-      process.stdout.write('\x1B[u'); // Restore cursor
+      return inputLines.join('\n') + '\n' + currentLineInput;
     };
 
-    // Initial draw
-    console.log(drawBar()); // Top bar
-    const currentLine = lines[currentLineIndex];
-    console.log(colors.dim(`  // ${currentLine.comment}`));
-    console.log(colors.dim(`  ${currentLine.code}`));
-    process.stdout.write(colors.success('> '));
-    process.stdout.write('\x1B[s'); // Save cursor
-    console.log(); // Move to next line for bottom bar
-    console.log(drawBar()); // Bottom bar
-    process.stdout.write('\x1B[u'); // Restore cursor to input line
+    const cleanup = () => {
+      process.stdin.pause(); // Stop receiving data during transition
+      process.stdin.setRawMode(false);
+      process.stdin.removeListener('data', handleKeypress);
+      if (escapeTimeout) clearTimeout(escapeTimeout);
+    };
+
+    const processKey = (key: string) => {
+      // Ctrl+C - exit
+      if (key === '\x03') {
+        cleanup();
+        console.log('\n');
+        process.exit(0);
+      }
+
+      // Shift+Tab - cycle mode
+      if (key === '\x1b[Z') {
+        cycleMode();
+        // Immediately redraw with new mode (mode footer will update)
+        const effectiveCorrectCount = isBlockMode() ? getFullInput().length : correctCount;
+        redrawTerminalMultiLine(expectedLines, expectedText, effectiveCorrectCount, inputLines, currentLineInput, hasExplanation);
+        return;
+      }
+
+      // Enter - new line (not submit, unless complete)
+      if (key === '\r' || key === '\n') {
+        // In DISCUSS MODE: Submit immediately like CLI behavior
+        if (isDiscussMode()) {
+          cleanup();
+
+          // Clear display properly
+          const linesToTop = (hasExplanation ? 1 : 0) + 1 + expectedLines.length + 1;
+          const totalLines = linesToTop + 1 + 1 + 1;
+
+          process.stdout.write(`\x1B[${linesToTop}A`);
+          for (let i = 0; i < totalLines; i++) {
+            process.stdout.write('\r\x1B[K\n');
+          }
+          process.stdout.write(`\x1B[${totalLines}A`);
+
+          // Return current input as a question/discussion
+          const fullInput = inputLines.length > 0
+            ? [...inputLines, currentLineInput].join('\n')
+            : currentLineInput;
+          resolve(['__QUESTION__:' + fullInput]);
+          return;
+        }
+
+        // Check if this is a natural language question on the first line
+        if (inputLines.length === 0 && isNaturalLanguageQuestion(currentLineInput, expectedLines[0])) {
+          cleanup();
+
+          // Clear display properly
+          // Structure: [explanation?] + "Expected:" + expected lines + top bar + current input + bottom bar + mode footer
+          // Cursor is on current input line
+          // Calculate distance from input line to top of display
+          const linesToTop = (hasExplanation ? 1 : 0) + 1 + expectedLines.length + 1;
+          const totalLines = linesToTop + 1 + 1 + 1; // input + bottom bar + mode footer
+
+          // Move to top of display
+          process.stdout.write(`\x1B[${linesToTop}A`);
+          // Clear all lines
+          for (let i = 0; i < totalLines; i++) {
+            process.stdout.write('\r\x1B[K\n');
+          }
+          // Move back to top
+          process.stdout.write(`\x1B[${totalLines}A`);
+
+          resolve(['__QUESTION__:' + currentLineInput]);
+          return;
+        }
+
+        // In block mode, count newline as correct
+        if (isBlockMode()) {
+          correctCount = getFullInput().length;
+          if (correctCount < expectedText.length && expectedText[correctCount] === '\n') {
+            correctCount++;
+          }
+        } else {
+          // Add newline to correctCount if it matches expected
+          const currentPos = getFullInput().length;
+          if (currentPos === correctCount && correctCount < expectedText.length && expectedText[correctCount] === '\n') {
+            correctCount++;
+          }
+        }
+
+        // Move current line to completed lines
+        inputLines.push(currentLineInput);
+        currentLineInput = '';
+
+        // Check if we've completed all expected text
+        const effectiveCorrectCount = isBlockMode() ? getFullInput().length + (inputLines.join('\n').length > 0 ? 0 : 0) : correctCount;
+        if (effectiveCorrectCount >= expectedText.length || (isBlockMode() && inputLines.length >= expectedLines.length)) {
+          cleanup();
+
+          // Final redraw
+          redrawTerminalMultiLine(expectedLines, expectedText, isBlockMode() ? expectedText.length : correctCount, inputLines, currentLineInput, hasExplanation);
+
+          // Move cursor down past bottom bar and mode footer (already drawn by redraw)
+          process.stdout.write('\x1B[2B\n');
+          console.log(colors.success('✓ All lines entered!'));
+
+          resolve(inputLines);
+          return;
+        }
+
+        // Redraw with new line
+        redrawTerminalMultiLine(expectedLines, expectedText, isBlockMode() ? getFullInput().length : correctCount, inputLines, currentLineInput, hasExplanation);
+        return;
+      }
+
+      // Backspace
+      if (key === '\x7f' || key === '\b') {
+        if (currentLineInput.length > 0) {
+          // If deleting a correct character, decrease correctCount
+          if (!isBlockMode()) {
+            const currentPos = getFullInput().length - 1;
+            if (correctCount > 0 && currentPos === correctCount - 1) {
+              correctCount--;
+            }
+          }
+          currentLineInput = currentLineInput.slice(0, -1);
+          redrawTerminalMultiLine(expectedLines, expectedText, isBlockMode() ? getFullInput().length : correctCount, inputLines, currentLineInput, hasExplanation);
+        } else if (inputLines.length > 0) {
+          // Backspace at start of line - go back to previous line
+          // First, decrement correctCount for the newline we're removing
+          if (!isBlockMode() && correctCount > 0) {
+            correctCount--;
+          }
+          currentLineInput = inputLines.pop() || '';
+          redrawTerminalMultiLine(expectedLines, expectedText, isBlockMode() ? getFullInput().length : correctCount, inputLines, currentLineInput, hasExplanation);
+        }
+        return;
+      }
+
+      // Ignore lone escape
+      if (key === '\x1b') {
+        return;
+      }
+
+      // Ignore Tab (only Shift+Tab cycles mode)
+      if (key === '\t') {
+        return;
+      }
+
+      // Regular character
+      if (key.length === 1 && key.charCodeAt(0) >= 32 && key.charCodeAt(0) < 127) {
+        currentLineInput += key;
+
+        if (isBlockMode()) {
+          // Block mode: all characters count as correct
+          correctCount = getFullInput().length;
+        } else {
+          // Tutor mode: check if this character matches expected
+          const currentPos = getFullInput().length - 1;
+          if (currentPos === correctCount && correctCount < expectedText.length && key === expectedText[correctCount]) {
+            correctCount++;
+          }
+        }
+
+        redrawTerminalMultiLine(expectedLines, expectedText, correctCount, inputLines, currentLineInput, hasExplanation);
+      }
+    };
+
+    const handleKeypress = (chunk: Buffer) => {
+      const data = chunk.toString();
+
+      // Handle escape sequences properly
+      for (const char of data) {
+        if (escapeBuffer.length > 0) {
+          escapeBuffer += char;
+          // Check if we have a complete escape sequence
+          if (escapeBuffer.length >= 3) {
+            if (escapeTimeout) clearTimeout(escapeTimeout);
+            processKey(escapeBuffer);
+            escapeBuffer = '';
+          }
+        } else if (char === '\x1b') {
+          escapeBuffer = char;
+          if (escapeTimeout) clearTimeout(escapeTimeout);
+          escapeTimeout = setTimeout(() => {
+            if (escapeBuffer === '\x1b') processKey('\x1b');
+            escapeBuffer = '';
+          }, 50);
+        } else {
+          processKey(char);
+        }
+      }
+    };
+
+    process.stdin.on('data', handleKeypress);
+  });
+}
+
+/**
+ * Create free-form input for discuss and code modes
+ * Uses raw mode to support shift+tab for mode cycling
+ * No Typer Shark tracking - just regular terminal input with mode support
+ * @param hint - Optional hint text to show above input (e.g., "Press Enter to continue")
+ */
+export function createFreeFormInput(
+  rl: readline.Interface,
+  expectedCode?: string | null,
+  hint?: string | null
+): Promise<string> {
+  return new Promise((resolve) => {
+    // Non-TTY fallback
+    if (!process.stdin.isTTY) {
+      process.stdout.write(colors.dim('› '));
+      const readline = require('readline');
+      const simpleRl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      simpleRl.once('line', (answer: string) => {
+        simpleRl.close();
+        resolve(answer);
+      });
+      return;
+    }
+
+    let inputBuffer = '';
+
+    // Escape sequence buffer for handling Shift+Tab
+    let escapeBuffer = '';
+    let escapeTimeout: NodeJS.Timeout | null = null;
+
+    // Track current display lines for proper redraw on mode switch
+    // Structure: top bar, [hint], [expected code if block mode], input line, bottom bar, mode footer
+    let currentDisplayLines = 4; // Default: top bar + input + bottom bar + mode footer
+    if (hint) currentDisplayLines += 1; // hint line
+    if (expectedCode && isBlockMode()) currentDisplayLines += 1; // expected code line
+
+    // Initialize display
+    console.log(drawBar());
+
+    // Show hint if provided (e.g., "Press Enter to continue")
+    if (hint) {
+      console.log(colors.dim(`  ${hint}`));
+    }
+
+    // Show expected code as reference in code mode
+    if (expectedCode && isBlockMode()) {
+      console.log(colors.dim(`  Expected: ${expectedCode}`));
+    }
+
+    // Input line with gray caret
+    process.stdout.write(colors.dim('› '));
+    // Draw bottom bar and mode footer below, then move cursor back to input line
+    // Note: We don't use cursor save/restore because it can be unreliable when terminal scrolls
+    console.log();  // newline after input line
+    console.log(drawBar());  // bottom bar
+    console.log(getModeIndicator());  // mode indicator
+    // Move cursor up 3 lines (from after mode indicator to input line) and to column 3 (after "› ")
+    process.stdout.write('\x1B[3A\x1B[3G');
+
+    // Calculate new display lines based on current mode
+    const getNewTotalLines = () => {
+      let lines = 4; // top bar + input + bottom bar + mode footer
+      if (hint) lines += 1; // hint line
+      if (expectedCode && isBlockMode()) lines += 1; // expected code line
+      return lines;
+    };
+
+    const redraw = () => {
+      const newTotalLines = getNewTotalLines();
+
+      // Use MAX of current and new lines to ensure we clear everything
+      const linesToClear = Math.max(currentDisplayLines, newTotalLines);
+
+      // Cursor is on input line. Calculate lines ABOVE cursor to reach top of display.
+      // Structure: top bar, [expected code if block mode], INPUT LINE (cursor here), bottom bar, mode footer
+      // Lines above cursor = total - 3 (input + bottom + footer are at or below cursor)
+      const linesAboveCursor = currentDisplayLines - 3;
+
+      // Move to top of current display (from input line to top bar)
+      process.stdout.write(`\x1B[${linesAboveCursor}A`);
+
+      // Clear all lines (use max to handle mode changes)
+      for (let i = 0; i < linesToClear; i++) {
+        process.stdout.write('\r\x1B[K\n');
+      }
+      process.stdout.write(`\x1B[${linesToClear}A`);
+
+      // Top bar
+      console.log(drawBar());
+
+      // Show hint if provided
+      if (hint) {
+        console.log(colors.dim(`  ${hint}`));
+      }
+
+      // Show expected code as reference in code mode
+      if (expectedCode && isBlockMode()) {
+        console.log(colors.dim(`  Expected: ${expectedCode}`));
+      }
+
+      // Input line with gray caret
+      process.stdout.write(colors.dim('› ') + inputBuffer);
+      // Draw bottom bar and mode footer below, then move cursor back to input line
+      // Note: We don't use cursor save/restore because it can be unreliable when terminal scrolls
+      console.log();  // newline after input line
+      console.log(drawBar());  // bottom bar
+      console.log(getModeIndicator());  // mode indicator
+      // Move cursor up 3 lines (from after mode indicator to input line) and to correct column
+      // Column is 3 (for "› ") plus inputBuffer length
+      const cursorCol = 3 + inputBuffer.length;
+      process.stdout.write(`\x1B[3A\x1B[${cursorCol}G`);
+
+      // Update tracked display lines for next redraw
+      currentDisplayLines = newTotalLines;
+    };
 
     // Enable raw mode
     process.stdin.setRawMode(true);
     process.stdin.resume();
 
-    const handleKeypress = (chunk: Buffer) => {
-      const key = chunk.toString();
+    const cleanup = () => {
+      process.stdin.pause(); // Stop receiving data during transition
+      process.stdin.setRawMode(false);
+      process.stdin.removeListener('data', handleKeypress);
+      if (escapeTimeout) clearTimeout(escapeTimeout);
+    };
 
+    const processKey = (key: string) => {
       // Ctrl+C - exit
       if (key === '\x03') {
-        process.stdin.setRawMode(false);
-        process.stdin.removeListener('data', handleKeypress);
+        cleanup();
         console.log('\n');
         process.exit(0);
       }
 
-      // Enter - submit current line
-      if (key === '\r' || key === '\n') {
-        completedLines.push(inputBuffer);
-        inputBuffer = '';
-        currentLineIndex++;
-
-        // Check if done
-        if (currentLineIndex >= lines.length) {
-          process.stdin.setRawMode(false);
-          process.stdin.removeListener('data', handleKeypress);
-
-          // Final redraw showing all completed lines
-          const totalLines = 2 + 2 + completedLines.length + 1; // bar + hint + completed + bar
-          process.stdout.write(`\x1B[${totalLines}A`); // Move up
-
-          // Clear and redraw final state
-          process.stdout.write('\r\x1B[K');
-          console.log(drawBar());
-
-          // Show all completed lines (no more hint since we're done)
-          for (let i = 0; i < completedLines.length; i++) {
-            process.stdout.write('\r\x1B[K');
-            const expected = lines[i].code;
-            const enteredLine = completedLines[i];
-            const isCorrect = enteredLine === expected;
-            console.log(colors.success('> ') + (isCorrect ? colors.success(enteredLine) : chalk.white(enteredLine)));
-          }
-
-          process.stdout.write('\r\x1B[K');
-          console.log(drawBar());
-          process.stdout.write('\r\x1B[K');
-          console.log(); // Blank line
-          process.stdout.write('\r\x1B[K');
-          console.log(colors.success('✓ All lines entered!'));
-
-          resolve(completedLines);
-          return;
-        }
-
-        // Redraw with new line
+      // Shift+Tab - cycle mode
+      if (key === '\x1b[Z') {
+        cycleMode();
         redraw();
+        return;
+      }
+
+      // Enter - submit
+      if (key === '\r' || key === '\n') {
+        cleanup();
+        // Clear the entire display before returning
+        // Use tracked currentDisplayLines to handle mode changes correctly
+        // Calculate lines from input line to top bar
+        // Structure: top bar, [expected code if block mode], input line, bottom bar, mode footer
+        const linesToTop = currentDisplayLines - 3; // everything above input line (total - input - bottom bar - footer)
+        // Move cursor to top of display
+        process.stdout.write(`\x1B[${linesToTop}A`);
+        // Clear all display lines
+        for (let i = 0; i < currentDisplayLines; i++) {
+          process.stdout.write('\r\x1B[K\n');
+        }
+        // Move back up to where display started
+        process.stdout.write(`\x1B[${currentDisplayLines}A`);
+        resolve(inputBuffer);
         return;
       }
 
@@ -1338,19 +1757,50 @@ export function createMultiLineTyperSharkInput(
       if (key === '\x7f' || key === '\b') {
         if (inputBuffer.length > 0) {
           inputBuffer = inputBuffer.slice(0, -1);
-          // Just update the current input line
-          process.stdout.write('\r\x1B[K');
-          process.stdout.write(colors.success('> ') + inputBuffer);
+          // Simple redraw of input line
+          process.stdout.write('\r\x1B[K' + colors.dim('› ') + inputBuffer);
         }
         return;
       }
 
-      // Regular character - only printable ASCII
+      // Ignore lone escape
+      if (key === '\x1b') {
+        return;
+      }
+
+      // Ignore Tab (only Shift+Tab cycles mode)
+      if (key === '\t') {
+        return;
+      }
+
+      // Regular character
       if (key.length === 1 && key.charCodeAt(0) >= 32 && key.charCodeAt(0) < 127) {
         inputBuffer += key;
-        // Just update the current input line
-        process.stdout.write('\r\x1B[K');
-        process.stdout.write(colors.success('> ') + inputBuffer);
+        process.stdout.write(key);
+      }
+    };
+
+    const handleKeypress = (chunk: Buffer) => {
+      const data = chunk.toString();
+
+      for (const char of data) {
+        if (escapeBuffer.length > 0) {
+          escapeBuffer += char;
+          if (escapeBuffer.length >= 3) {
+            if (escapeTimeout) clearTimeout(escapeTimeout);
+            processKey(escapeBuffer);
+            escapeBuffer = '';
+          }
+        } else if (char === '\x1b') {
+          escapeBuffer = char;
+          if (escapeTimeout) clearTimeout(escapeTimeout);
+          escapeTimeout = setTimeout(() => {
+            if (escapeBuffer === '\x1b') processKey('\x1b');
+            escapeBuffer = '';
+          }, 50);
+        } else {
+          processKey(char);
+        }
       }
     };
 

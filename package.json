@@ -1,6 +1,6 @@
 {
   "name": "claude-tutor",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "A Software Engineering Tutor built with Claude's Agent SDK",
   "type": "module",
   "bin": {

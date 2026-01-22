@@ -45,8 +45,17 @@ import {
   createTyperSharkInput,
   createMultiLineTyperSharkInput,
   createInteractiveSelect,
+  createFreeFormInput,
   type ExtractedCode,
 } from "./input.js";
+import { isDiscussMode, isBlockMode, isTutorMode } from "./mode.js";
+import chalk from "chalk";
+
+// Colors for mode-based display
+const colors = {
+  dim: chalk.gray,
+  primary: chalk.hex('#10B981'),
+};
 import {
   displayWelcome,
   displaySegmentHeader,
@@ -114,9 +123,6 @@ let heredocState: {
   lines: string[];
 } = { active: false, delimiter: "", command: "", lines: [] };
 
-// Abort controller for cancelling requests
-let shouldCancel = false;
-
 /**
  * Check if input looks like a shell command
  */
@@ -167,7 +173,7 @@ const program = new Command();
 program
   .name("claude-tutor")
   .description("Claude Software Engineering Tutor")
-  .version("1.0.0")
+  .version("0.1.0")
   .option("-d, --dir <directory>", "Project directory (auto-creates if not specified)")
   .option("-t, --token <apiKey>", "API token for authentication")
   .action(async (options) => {
@@ -241,7 +247,7 @@ async function startCommand(projectDir: string | undefined): Promise<void> {
         newLine();
 
         const answer = await new Promise<string>((resolve) => {
-          displayQuestionPrompt("Continue this project? (Y/n)");
+          displayQuestionPrompt("Continue this project? (y/n)");
           rl.once("line", resolve);
         });
 
@@ -295,7 +301,7 @@ async function startCommand(projectDir: string | undefined): Promise<void> {
       newLine();
 
       const answer = await new Promise<string>((resolve) => {
-        displayQuestionPrompt("Continue this project? (Y/n)");
+        displayQuestionPrompt("Continue this project? (y/n)");
         rl.once("line", resolve);
       });
 
@@ -513,20 +519,9 @@ async function runTutorLoop(
     output: process.stdout,
   });
 
-  // Enable keypress events for ESC handling
-  if (process.stdin.isTTY) {
-    readline.emitKeypressEvents(process.stdin, rl);
-  }
-
-  // Setup ESC key handling
-  process.stdin.on("keypress", (_str, key) => {
-    if (key && key.name === "escape" && isLoadingActive()) {
-      shouldCancel = true;
-      stopLoading();
-      console.log("\n(Cancelled)");
-      displayPrompt();
-    }
-  });
+  // Note: We intentionally do NOT call readline.emitKeypressEvents() here
+  // because it adds an internal data listener that interferes with our
+  // raw mode input handlers, causing doubled character input.
 
   // Get current segment
   let segment = getCurrentSegment(curriculum, state.currentSegmentIndex);
@@ -598,18 +593,50 @@ async function runTutorLoop(
     process.exit(1);
   }
 
-  // Helper to get input - uses Typer Shark when expected code exists
+  // Helper to get input - mode determines behavior
   const getInput = async (): Promise<string> => {
+    // Check mode first - discuss and code modes use free-form input with shift+tab support
+
+    // DISCUSS MODE: Free-form natural language input, send directly to LLM
+    if (isDiscussMode() && !heredocState.active) {
+      const result = await createFreeFormInput(rl, null);
+      currentExpectedCode = null; // Clear any expected code in discuss mode
+      return result;
+    }
+
+    // CODE MODE: Regular terminal behavior - show expected code as reference, type freely
+    if (isBlockMode() && !heredocState.active) {
+      const expectedCodeStr = currentExpectedCode?.isMultiLine && currentExpectedCode?.lines
+        ? currentExpectedCode.lines.map(l => l.code).join('\n')
+        : currentExpectedCode?.code || null;
+      const result = await createFreeFormInput(rl, expectedCodeStr);
+      currentExpectedCode = null; // Clear expected code after input
+      return result;
+    }
+
+    // TUTOR MODE: Use Typer Shark for guided typing
     // Don't use Typer Shark for heredoc continuation lines
     if (currentExpectedCode && !heredocState.active) {
       if (currentExpectedCode.isMultiLine && currentExpectedCode.lines) {
         // Multi-line Typer Shark for heredocs with interleaved comments
+        // Calculate lines to clear: each line has comment + code in the raw stream
+        // Plus extra lines for the initial explanation text from Claude
+        const linesToClear = currentExpectedCode.lines.length * 2 + 4;
         const results = await createMultiLineTyperSharkInput(
           rl,
           currentExpectedCode.lines,
+          currentExpectedCode.explanation || "Type each line below:",
+          linesToClear,
         );
         // Clear expected code after input
         currentExpectedCode = null;
+
+        // Check if user asked a question instead of typing code
+        if (results.length === 1 && results[0].startsWith('__QUESTION__:')) {
+          // Extract the question and return it as natural language
+          return results[0].slice('__QUESTION__:'.length);
+        }
+
         // Return all lines joined for command execution
         return results.join("\n");
       } else {
@@ -623,24 +650,23 @@ async function runTutorLoop(
         currentExpectedCode = null;
         return result;
       }
-    } else {
-      // Regular readline input (or heredoc continuation)
-      if (heredocState.active) {
-        displayContinuationPrompt();
-      } else {
-        displayPrompt();
-      }
+    } else if (heredocState.active) {
+      // Heredoc continuation - use regular readline
+      displayContinuationPrompt();
       return new Promise((resolve) => {
         rl.once("line", resolve);
       });
+    } else {
+      // TUTOR MODE without expected code - use free-form input with hint
+      // This allows mode cycling and shows the user they can press Enter to continue
+      const result = await createFreeFormInput(rl, null, "Press Enter to continue, or type a question");
+      return result;
     }
   };
 
   // Main conversation loop
   while (true) {
     const input = await getInput();
-    // Reset cancel flag
-    shouldCancel = false;
 
     // Handle heredoc continuation
     if (heredocState.active) {
@@ -723,6 +749,12 @@ async function runTutorLoop(
     }
 
     const userInput = input.trim();
+
+    // In discuss mode, print the user's question as a log entry
+    if (isDiscussMode() && userInput) {
+      console.log(colors.dim('› ' + userInput));
+      console.log();
+    }
 
     // Empty Enter = continue signal
     if (!userInput) {
