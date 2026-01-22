@@ -623,6 +623,23 @@ export function displayHelperText(): void {
   console.log(colors.muted('esc to stop'));
 }
 
+// Track lines used by question prompt for proper cleanup
+let questionPromptLines = 4;
+
+/**
+ * Calculate how many terminal lines a string will occupy when printed
+ */
+function getDisplayLineCount(text: string): number {
+  const termWidth = process.stdout.columns || 80;
+  const lines = text.split('\n');
+  let totalLines = 0;
+  for (const line of lines) {
+    // Each line takes at least 1 row, plus additional rows if it wraps
+    totalLines += Math.max(1, Math.ceil(line.length / termWidth));
+  }
+  return totalLines;
+}
+
 /**
  * Display question prompt for setup with full-width lines
  */
@@ -631,6 +648,10 @@ export function displayQuestionPrompt(question: string): void {
   console.log(colors.text(question));
   console.log(drawBar());
   process.stdout.write(colors.primary(symbols.arrow + ' '));
+
+  // Calculate total lines: top bar (1) + question text lines + bottom bar (1) + prompt line (1)
+  const questionLines = getDisplayLineCount(question);
+  questionPromptLines = 1 + questionLines + 1 + 1; // top bar + question + bottom bar + prompt
 }
 
 /**
@@ -640,18 +661,22 @@ export function displayQuestionPrompt(question: string): void {
 export function closeQuestionPrompt(question: string, answer: string): void {
   if (!process.stdout.isTTY) return;
 
-  // Move cursor up to clear the entry box (4 lines: top bar, question, bottom bar, prompt with answer)
-  process.stdout.write('\x1B[4A');
+  // Move cursor up to clear the entry box (calculated lines from displayQuestionPrompt)
+  process.stdout.write(`\x1B[${questionPromptLines}A`);
 
-  // Clear and redraw as clean log entry
+  // Clear all the lines we used
+  for (let i = 0; i < questionPromptLines; i++) {
+    process.stdout.write('\r\x1B[K\n');
+  }
+  process.stdout.write(`\x1B[${questionPromptLines}A`);
+
+  // Redraw as clean log entry (condensed - no bars)
   process.stdout.write('\r\x1B[K');
   console.log(colors.dim(question));
   process.stdout.write('\r\x1B[K');
   console.log(colors.primary(symbols.arrow + ' ') + answer);
   process.stdout.write('\r\x1B[K');
   console.log(); // Blank line
-  process.stdout.write('\r\x1B[K');
-  // Don't print anything on last line - ready for next output
 }
 
 /**
