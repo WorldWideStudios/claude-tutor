@@ -761,6 +761,68 @@ export function createInteractiveSelect(
 }
 
 /**
+ * Detect if Claude suggested new/different code during discuss mode
+ * Looks at recent assistant messages for code blocks
+ */
+export function detectCodeInDiscussion(messages: Array<{ role: string; content: unknown }>): string | null {
+  // Look at last few assistant messages
+  const recentMessages = messages
+    .filter(m => m.role === 'assistant')
+    .slice(-3);
+
+  for (const msg of recentMessages) {
+    const content = typeof msg.content === 'string' ? msg.content :
+      Array.isArray(msg.content) ?
+        msg.content.map((c: { type?: string; text?: string }) => c.type === 'text' ? c.text : '').join('') : '';
+
+    // Look for code blocks
+    const codeBlockMatch = content.match(/```(?:bash|sh|shell|typescript|ts|javascript|js)?\n?([\s\S]*?)```/);
+    if (codeBlockMatch) {
+      const code = codeBlockMatch[1].trim();
+      // Only return if it looks like substantial code (not just a one-liner example)
+      if (code.length > 20 || code.includes('\n')) {
+        return code;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Prompt user about updating the plan with new code
+ */
+export async function promptPlanUpdate(
+  rl: readline.Interface,
+  newCode: string,
+  currentCode: string
+): Promise<boolean> {
+  console.log();
+  console.log(colors.orange('New code was discussed that differs from your plan.'));
+  console.log();
+  console.log(colors.dim('Suggested code:'));
+  console.log(colors.dim('─'.repeat(60)));
+  // Show first few lines of new code
+  const previewLines = newCode.split('\n').slice(0, 5);
+  previewLines.forEach(line => console.log(colors.tan(line)));
+  if (newCode.split('\n').length > 5) {
+    console.log(colors.dim(`  ... (${newCode.split('\n').length - 5} more lines)`));
+  }
+  console.log(colors.dim('─'.repeat(60)));
+  console.log();
+
+  const answer = await createInteractiveSelect(rl,
+    'Update your learning plan with this code?',
+    [
+      { label: 'No, continue with original plan', value: 'no' },
+      { label: 'Yes, use the new code', value: 'yes' },
+    ]
+  );
+
+  return answer === 'yes';
+}
+
+/**
  * A single line of code with its comment
  */
 export interface CodeLine {

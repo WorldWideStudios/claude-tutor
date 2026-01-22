@@ -146,6 +146,11 @@ export const ProgressSchema = z.object({
   codeReviewed: z.boolean().default(false), // Has code been reviewed
   committed: z.boolean().default(false), // Has user committed
 
+  // Golden code step tracking (for plan-based tutor mode)
+  currentGoldenStep: z.number().default(0), // Which step within goldenCode
+  totalGoldenSteps: z.number().default(0), // Total steps parsed from goldenCode
+  pendingPlanUpdate: z.string().optional(), // New code suggested in discuss mode
+
   // Timestamps
   startedAt: z.string(),
   lastUpdatedAt: z.string(),

@@ -41,14 +41,18 @@ import {
   pruneContextForNewSegment,
 } from "./agent.js";
 import {
-  extractExpectedCode,
   createTyperSharkInput,
   createMultiLineTyperSharkInput,
   createInteractiveSelect,
   createFreeFormInput,
   type ExtractedCode,
 } from "./input.js";
-import { isDiscussMode, isBlockMode, isTutorMode } from "./mode.js";
+import { isDiscussMode, isBlockMode, isTutorMode, getMode } from "./mode.js";
+import {
+  goldenCodeToExtractedCode,
+  getGoldenCodeStepCount,
+  hasMoreGoldenSteps,
+} from "./golden-code.js";
 import chalk from "chalk";
 
 // Colors for mode-based display
@@ -513,6 +517,7 @@ async function runTutorLoop(
   let messages: MessageParam[] = createInitialMessages();
   let previousSummary: string | undefined;
   let currentExpectedCode: ExtractedCode | null = null; // Track what user should type with explanation
+  let currentGoldenStepIndex = 0; // Track position in goldenCode for plan-based tutor mode
 
   const rl = readline.createInterface({
     input: process.stdin,
@@ -576,12 +581,16 @@ async function runTutorLoop(
     if (!loadingStopped) stopLoading();
     setAgentRunning(false);
     messages = result.messages;
-    // Extract expected code from response for character tracking
+    // Use plan-based code loading from goldenCode (not dynamic extraction)
+    if (segment && segment.goldenCode) {
+      currentGoldenStepIndex = progress.currentGoldenStep || 0;
+      currentExpectedCode = goldenCodeToExtractedCode(segment.goldenCode, currentGoldenStepIndex);
+    }
+    // Save the tutor's initial message to progress
     if (result.lastResponse) {
-      currentExpectedCode = extractExpectedCode(result.lastResponse);
-      // Save the tutor's initial message to progress
       await updateProgress(curriculum.workingDirectory, {
         lastTutorMessage: result.lastResponse.slice(0, 500),
+        totalGoldenSteps: segment ? getGoldenCodeStepCount(segment.goldenCode) : 0,
       });
     }
     newLine();
@@ -666,7 +675,17 @@ async function runTutorLoop(
 
   // Main conversation loop
   while (true) {
+    // Track mode before getting input to detect transitions
+    const modeBeforeInput = getMode();
+
     const input = await getInput();
+
+    // Detect mode change during input (user pressed Shift+Tab)
+    const modeAfterInput = getMode();
+    if (modeBeforeInput !== modeAfterInput && isTutorMode() && segment && segment.goldenCode) {
+      // Reload current step from plan when switching to tutor mode
+      currentExpectedCode = goldenCodeToExtractedCode(segment.goldenCode, currentGoldenStepIndex);
+    }
 
     // Handle heredoc continuation
     if (heredocState.active) {
@@ -730,9 +749,14 @@ async function runTutorLoop(
           if (!loadingStopped) stopLoading();
           setAgentRunning(false);
           messages = result.messages;
-          // Extract expected code for next input
-          if (result.lastResponse) {
-            currentExpectedCode = extractExpectedCode(result.lastResponse);
+          // Advance to next golden step after heredoc completion (user typed code)
+          if (segment && segment.goldenCode && hasMoreGoldenSteps(segment.goldenCode, currentGoldenStepIndex)) {
+            currentGoldenStepIndex++;
+            await updateProgress(curriculum.workingDirectory, { currentGoldenStep: currentGoldenStepIndex });
+          }
+          // Load next step from plan
+          if (segment && segment.goldenCode) {
+            currentExpectedCode = goldenCodeToExtractedCode(segment.goldenCode, currentGoldenStepIndex);
           }
           newLine();
         } catch (error: any) {
@@ -789,9 +813,11 @@ async function runTutorLoop(
         if (!loadingStopped) stopLoading();
         setAgentRunning(false);
         messages = result.messages;
-        // Extract expected code for next input
-        if (result.lastResponse) {
-          currentExpectedCode = extractExpectedCode(result.lastResponse);
+        // Reload current step from plan (don't advance on Enter)
+        if (isTutorMode() && segment && segment.goldenCode) {
+          currentExpectedCode = goldenCodeToExtractedCode(segment.goldenCode, currentGoldenStepIndex);
+        } else if (isDiscussMode()) {
+          currentExpectedCode = null;
         }
         newLine();
         continue;
@@ -895,9 +921,16 @@ async function runTutorLoop(
       setAgentRunning(false);
 
       messages = result.messages;
-      // Extract expected code for next input
-      if (result.lastResponse) {
-        currentExpectedCode = extractExpectedCode(result.lastResponse);
+      // Advance to next golden step after successful command execution
+      if (segment && segment.goldenCode && hasMoreGoldenSteps(segment.goldenCode, currentGoldenStepIndex)) {
+        currentGoldenStepIndex++;
+        await updateProgress(curriculum.workingDirectory, { currentGoldenStep: currentGoldenStepIndex });
+      }
+      // Load next step from plan
+      if (isTutorMode() && segment && segment.goldenCode) {
+        currentExpectedCode = goldenCodeToExtractedCode(segment.goldenCode, currentGoldenStepIndex);
+      } else if (isDiscussMode()) {
+        currentExpectedCode = null;
       }
       newLine();
 
@@ -972,9 +1005,14 @@ async function runTutorLoop(
         if (!newLoadingStopped) stopLoading();
         setAgentRunning(false);
         messages = newResult.messages;
-        // Extract expected code for next input
-        if (newResult.lastResponse) {
-          currentExpectedCode = extractExpectedCode(newResult.lastResponse);
+        // Reset golden step index for new segment and load from plan
+        currentGoldenStepIndex = 0;
+        if (segment && segment.goldenCode) {
+          currentExpectedCode = goldenCodeToExtractedCode(segment.goldenCode, currentGoldenStepIndex);
+          await updateProgress(curriculum.workingDirectory, {
+            currentGoldenStep: 0,
+            totalGoldenSteps: getGoldenCodeStepCount(segment.goldenCode),
+          });
         }
         newLine();
       }

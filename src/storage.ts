@@ -110,6 +110,25 @@ export async function saveCurriculum(curriculum: Curriculum): Promise<string> {
 }
 
 /**
+ * Update a segment's goldenCode in the curriculum
+ * Used when user confirms new code from discuss mode should update the plan
+ */
+export async function updateSegmentGoldenCode(
+  curriculum: Curriculum,
+  segmentIndex: number,
+  newGoldenCode: string
+): Promise<void> {
+  const segment = curriculum.segments[segmentIndex];
+  if (!segment) return;
+
+  // Update the goldenCode
+  segment.goldenCode = newGoldenCode;
+
+  // Save the updated curriculum
+  await saveCurriculum(curriculum);
+}
+
+/**
  * Update state to mark a segment as complete
  */
 export async function markSegmentComplete(
@@ -191,6 +210,9 @@ export function createInitialProgress(segmentId: string, segmentIndex: number): 
     syntaxVerified: false,
     codeReviewed: false,
     committed: false,
+    currentGoldenStep: 0,
+    totalGoldenSteps: 0,
+    pendingPlanUpdate: undefined,
     startedAt: new Date().toISOString(),
     lastUpdatedAt: new Date().toISOString(),
   };
