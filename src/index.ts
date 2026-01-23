@@ -58,7 +58,7 @@ import chalk from "chalk";
 // Colors for mode-based display
 const colors = {
   dim: chalk.gray,
-  primary: chalk.hex('#10B981'),
+  primary: chalk.hex("#10B981"),
 };
 import {
   displayWelcome,
@@ -93,7 +93,12 @@ import {
   newLine,
 } from "./display.js";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
-import type { Curriculum, TutorState, LearnerProfile, Progress } from "./types.js";
+import type {
+  Curriculum,
+  TutorState,
+  LearnerProfile,
+  Progress,
+} from "./types.js";
 import { askClarifyingQuestions, type QuestionContext } from "./questions.js";
 import { loginCommand } from "./auth.js";
 
@@ -178,15 +183,22 @@ program
   .name("claude-tutor")
   .description("Claude Software Engineering Tutor")
   .version("0.1.0")
-  .option("-d, --dir <directory>", "Project directory (auto-creates if not specified)")
+  .option(
+    "-d, --dir <directory>",
+    "Project directory (auto-creates if not specified)",
+  )
   .option("-t, --token <apiKey>", "API token for authentication")
   .action(async (options) => {
     // Handle token authentication
     if (options.token) {
-      await saveConfig({ apiKey: options.token });
-      displayInfo("✓ API token saved successfully!");
-      displayInfo('You can now run "claude-tutor" to start.');
-      process.exit(0);
+      try {
+        await saveConfig({ apiKey: options.token });
+        displayInfo("✓ API token saved successfully!");
+        displayInfo("Initializing your session...");
+      } catch (error) {
+        console.error("Failed to save API token:", error);
+        process.exit(1);
+      }
     }
     // Default action: start a new project
     await startCommand(options.dir);
@@ -225,18 +237,21 @@ async function startCommand(projectDir: string | undefined): Promise<void> {
 
   // Track whether user specified a directory or we should auto-create one
   const userSpecifiedDir = !!projectDir;
-  let resolvedProjectDir = userSpecifiedDir
-    ? path.resolve(projectDir)
-    : ""; // Will be set after getting project name
+  let resolvedProjectDir = userSpecifiedDir ? path.resolve(projectDir) : ""; // Will be set after getting project name
 
   // Check for existing project in GLOBAL STATE first (when no directory specified)
   if (!userSpecifiedDir) {
     const existingState = await loadState();
     if (existingState && existingState.curriculumPath) {
-      const existingCurriculum = await loadCurriculum(existingState.curriculumPath);
+      const existingCurriculum = await loadCurriculum(
+        existingState.curriculumPath,
+      );
       if (
         existingCurriculum &&
-        !isCurriculumComplete(existingCurriculum, existingState.completedSegments)
+        !isCurriculumComplete(
+          existingCurriculum,
+          existingState.completedSegments,
+        )
       ) {
         // There's an active project - ask if they want to resume
         const rl = readline.createInterface({
@@ -277,7 +292,10 @@ async function startCommand(projectDir: string | undefined): Promise<void> {
   // Check for existing project IN THE SPECIFIED DIRECTORY (only if user specified one)
   let existingCurriculum = null;
   if (userSpecifiedDir) {
-    const curriculumPathInDir = path.join(resolvedProjectDir, ".curriculum.json");
+    const curriculumPathInDir = path.join(
+      resolvedProjectDir,
+      ".curriculum.json",
+    );
     try {
       existingCurriculum = await loadCurriculum(curriculumPathInDir);
     } catch {
@@ -537,8 +555,11 @@ async function runTutorLoop(
   }
 
   // Load or create progress for this segment
-  let progress: Progress | null = await loadProgress(curriculum.workingDirectory);
-  const isResuming = progress !== null && progress.currentSegmentId === segment.id;
+  let progress: Progress | null = await loadProgress(
+    curriculum.workingDirectory,
+  );
+  const isResuming =
+    progress !== null && progress.currentSegmentId === segment.id;
 
   if (!progress || progress.currentSegmentId !== segment.id) {
     // Create new progress for this segment
@@ -591,7 +612,9 @@ async function runTutorLoop(
     if (result.lastResponse) {
       await updateProgress(curriculum.workingDirectory, {
         lastTutorMessage: result.lastResponse.slice(0, 500),
-        totalGoldenSteps: segment ? getGoldenCodeStepCount(segment.goldenCode) : 0,
+        totalGoldenSteps: segment
+          ? getGoldenCodeStepCount(segment.goldenCode)
+          : 0,
       });
     }
     newLine();
@@ -616,9 +639,10 @@ async function runTutorLoop(
 
     // CODE MODE: Regular terminal behavior - show expected code as reference, type freely
     if (isBlockMode() && !heredocState.active) {
-      const expectedCodeStr = currentExpectedCode?.isMultiLine && currentExpectedCode?.lines
-        ? currentExpectedCode.lines.map(l => l.code).join('\n')
-        : currentExpectedCode?.code || null;
+      const expectedCodeStr =
+        currentExpectedCode?.isMultiLine && currentExpectedCode?.lines
+          ? currentExpectedCode.lines.map((l) => l.code).join("\n")
+          : currentExpectedCode?.code || null;
       const result = await createFreeFormInput(rl, expectedCodeStr);
       currentExpectedCode = null; // Clear expected code after input
       return result;
@@ -646,9 +670,9 @@ async function runTutorLoop(
         currentExpectedCode = null;
 
         // Check if user asked a question instead of typing code
-        if (results.length === 1 && results[0].startsWith('__QUESTION__:')) {
+        if (results.length === 1 && results[0].startsWith("__QUESTION__:")) {
           // Extract the question and return it as natural language
-          return results[0].slice('__QUESTION__:'.length);
+          return results[0].slice("__QUESTION__:".length);
         }
 
         // Return all lines joined for command execution
@@ -673,7 +697,11 @@ async function runTutorLoop(
     } else {
       // TUTOR MODE without expected code - use free-form input with hint
       // This allows mode cycling and shows the user they can press Enter to continue
-      const result = await createFreeFormInput(rl, null, "Press Enter to continue, or type a question");
+      const result = await createFreeFormInput(
+        rl,
+        null,
+        "Press Enter to continue, or type a question",
+      );
       return result;
     }
   };
@@ -687,9 +715,17 @@ async function runTutorLoop(
 
     // Detect mode change during input (user pressed Shift+Tab)
     const modeAfterInput = getMode();
-    if (modeBeforeInput !== modeAfterInput && isTutorMode() && segment && segment.goldenCode) {
+    if (
+      modeBeforeInput !== modeAfterInput &&
+      isTutorMode() &&
+      segment &&
+      segment.goldenCode
+    ) {
       // Reload current step from plan when switching to tutor mode
-      currentExpectedCode = goldenCodeToExtractedCode(segment.goldenCode, currentGoldenStepIndex);
+      currentExpectedCode = goldenCodeToExtractedCode(
+        segment.goldenCode,
+        currentGoldenStepIndex,
+      );
     }
 
     // Handle heredoc continuation
@@ -719,7 +755,10 @@ async function runTutorLoop(
             codeWritten: true,
             lastUserAction: `Created file: ${fileName}`,
           });
-          await addCompletedStep(curriculum.workingDirectory, `Created file: ${fileName}`);
+          await addCompletedStep(
+            curriculum.workingDirectory,
+            `Created file: ${fileName}`,
+          );
         }
 
         // Send to Claude
@@ -755,13 +794,22 @@ async function runTutorLoop(
           setAgentRunning(false);
           messages = result.messages;
           // Advance to next golden step after heredoc completion (user typed code)
-          if (segment && segment.goldenCode && hasMoreGoldenSteps(segment.goldenCode, currentGoldenStepIndex)) {
+          if (
+            segment &&
+            segment.goldenCode &&
+            hasMoreGoldenSteps(segment.goldenCode, currentGoldenStepIndex)
+          ) {
             currentGoldenStepIndex++;
-            await updateProgress(curriculum.workingDirectory, { currentGoldenStep: currentGoldenStepIndex });
+            await updateProgress(curriculum.workingDirectory, {
+              currentGoldenStep: currentGoldenStepIndex,
+            });
           }
           // Load next step from plan
           if (segment && segment.goldenCode) {
-            currentExpectedCode = goldenCodeToExtractedCode(segment.goldenCode, currentGoldenStepIndex);
+            currentExpectedCode = goldenCodeToExtractedCode(
+              segment.goldenCode,
+              currentGoldenStepIndex,
+            );
           }
           newLine();
         } catch (error: any) {
@@ -781,7 +829,7 @@ async function runTutorLoop(
 
     // In discuss mode, print the user's question as a log entry
     if (isDiscussMode() && userInput) {
-      console.log(colors.dim('› ' + userInput));
+      console.log(colors.dim("› " + userInput));
       console.log();
     }
 
@@ -820,7 +868,10 @@ async function runTutorLoop(
         messages = result.messages;
         // Reload current step from plan (don't advance on Enter)
         if (isTutorMode() && segment && segment.goldenCode) {
-          currentExpectedCode = goldenCodeToExtractedCode(segment.goldenCode, currentGoldenStepIndex);
+          currentExpectedCode = goldenCodeToExtractedCode(
+            segment.goldenCode,
+            currentGoldenStepIndex,
+          );
         } else if (isDiscussMode()) {
           currentExpectedCode = null;
         }
@@ -883,12 +934,21 @@ async function runTutorLoop(
         // Track specific actions
         if (userInput.startsWith("cat >") || userInput.includes(">> ")) {
           updates.codeWritten = true;
-          await addCompletedStep(curriculum.workingDirectory, `Created/modified file: ${userInput.split(/[>\s]+/)[1] || "file"}`);
+          await addCompletedStep(
+            curriculum.workingDirectory,
+            `Created/modified file: ${userInput.split(/[>\s]+/)[1] || "file"}`,
+          );
         } else if (userInput.startsWith("git commit")) {
           updates.committed = true;
-          await addCompletedStep(curriculum.workingDirectory, "Committed code to git");
+          await addCompletedStep(
+            curriculum.workingDirectory,
+            "Committed code to git",
+          );
         } else if (userInput.startsWith("mkdir")) {
-          await addCompletedStep(curriculum.workingDirectory, `Created directory: ${userInput}`);
+          await addCompletedStep(
+            curriculum.workingDirectory,
+            `Created directory: ${userInput}`,
+          );
         }
 
         await updateProgress(curriculum.workingDirectory, updates);
@@ -927,13 +987,22 @@ async function runTutorLoop(
 
       messages = result.messages;
       // Advance to next golden step after successful command execution
-      if (segment && segment.goldenCode && hasMoreGoldenSteps(segment.goldenCode, currentGoldenStepIndex)) {
+      if (
+        segment &&
+        segment.goldenCode &&
+        hasMoreGoldenSteps(segment.goldenCode, currentGoldenStepIndex)
+      ) {
         currentGoldenStepIndex++;
-        await updateProgress(curriculum.workingDirectory, { currentGoldenStep: currentGoldenStepIndex });
+        await updateProgress(curriculum.workingDirectory, {
+          currentGoldenStep: currentGoldenStepIndex,
+        });
       }
       // Load next step from plan
       if (isTutorMode() && segment && segment.goldenCode) {
-        currentExpectedCode = goldenCodeToExtractedCode(segment.goldenCode, currentGoldenStepIndex);
+        currentExpectedCode = goldenCodeToExtractedCode(
+          segment.goldenCode,
+          currentGoldenStepIndex,
+        );
       } else if (isDiscussMode()) {
         currentExpectedCode = null;
       }
@@ -1013,7 +1082,10 @@ async function runTutorLoop(
         // Reset golden step index for new segment and load from plan
         currentGoldenStepIndex = 0;
         if (segment && segment.goldenCode) {
-          currentExpectedCode = goldenCodeToExtractedCode(segment.goldenCode, currentGoldenStepIndex);
+          currentExpectedCode = goldenCodeToExtractedCode(
+            segment.goldenCode,
+            currentGoldenStepIndex,
+          );
           await updateProgress(curriculum.workingDirectory, {
             currentGoldenStep: 0,
             totalGoldenSteps: getGoldenCodeStepCount(segment.goldenCode),
