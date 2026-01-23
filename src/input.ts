@@ -1,4 +1,4 @@
-import * as readline from 'readline';
+import * as readline from "readline";
 import {
   setExpectedText,
   clearExpectedText,
@@ -12,20 +12,26 @@ import {
   clearForTyperShark,
   drawBar,
   getModeIndicator,
-} from './display.js';
-import { cycleMode, getMode, isDiscussMode, isBlockMode, isTutorMode } from './mode.js';
-import chalk from 'chalk';
+} from "./display.js";
+import {
+  cycleMode,
+  getMode,
+  isDiscussMode,
+  isBlockMode,
+  isTutorMode,
+} from "./mode.js";
+import chalk from "chalk";
 
 // Colors for typing feedback
 const colors = {
   success: chalk.green,
   error: chalk.red,
-  orange: chalk.hex('#F59E0B'),
+  orange: chalk.hex("#F59E0B"),
   dim: chalk.gray,
-  primary: chalk.hex('#10B981'),
-  tan: chalk.hex('#D4A574'),
+  primary: chalk.hex("#10B981"),
+  tan: chalk.hex("#D4A574"),
   // For interactive select: white text on green background
-  selectedBg: chalk.bgHex('#10B981').white.bold,
+  selectedBg: chalk.bgHex("#10B981").white.bold,
 };
 
 /**
@@ -58,23 +64,24 @@ export interface WizardQuestion {
  */
 export function createMultiQuestionWizard(
   rl: readline.Interface,
-  questions: WizardQuestion[]
+  questions: WizardQuestion[],
 ): Promise<Record<string, string>> {
   return new Promise((resolve) => {
     // Non-TTY fallback
     if (!process.stdin.isTTY) {
       const answers: Record<string, string> = {};
-      console.log('Answer the following questions:');
+      console.log("Answer the following questions:");
       questions.forEach((q, i) => {
         console.log(`\n${i + 1}. ${q.question}`);
         q.options.forEach((opt, j) => console.log(`  ${j + 1}. ${opt.label}`));
       });
-      process.stdout.write('Enter answers (comma-separated numbers): ');
-      rl.once('line', (input) => {
-        const nums = input.split(',').map(s => parseInt(s.trim()));
+      process.stdout.write("Enter answers (comma-separated numbers): ");
+      rl.once("line", (input) => {
+        const nums = input.split(",").map((s) => parseInt(s.trim()));
         questions.forEach((q, i) => {
           const num = nums[i] || 1;
-          answers[q.question] = q.options[num - 1]?.value || q.options[0]?.value || '';
+          answers[q.question] =
+            q.options[num - 1]?.value || q.options[0]?.value || "";
         });
         resolve(answers);
       });
@@ -89,11 +96,15 @@ export function createMultiQuestionWizard(
     let summarySelectedIndex = 0;
 
     // Word-wrap text to fit within maxWidth
-    const wordWrap = (text: string, maxWidth: number, indent: string = ''): string[] => {
+    const wordWrap = (
+      text: string,
+      maxWidth: number,
+      indent: string = "",
+    ): string[] => {
       if (text.length <= maxWidth) return [text];
-      const words = text.split(' ');
+      const words = text.split(" ");
       const lines: string[] = [];
-      let currentLine = '';
+      let currentLine = "";
       for (const word of words) {
         const testLine = currentLine ? `${currentLine} ${word}` : word;
         if (testLine.length <= maxWidth) {
@@ -114,10 +125,10 @@ export function createMultiQuestionWizard(
       total += 1; // progress line
       total += wordWrap(q.question, termWidth - 1).length;
       q.options.forEach((opt) => {
-        const prefix = '  1. ';
-        const desc = opt.description ? ` - ${opt.description}` : '';
+        const prefix = "  1. ";
+        const desc = opt.description ? ` - ${opt.description}` : "";
         const fullLine = prefix + opt.label + desc;
-        total += wordWrap(fullLine, termWidth - 1, '       ').length;
+        total += wordWrap(fullLine, termWidth - 1, "       ").length;
       });
       total += 1; // navigation hint
       total += 1; // bottom bar
@@ -147,23 +158,27 @@ export function createMultiQuestionWizard(
       if (clearFirst) {
         process.stdout.write(`\x1B[${totalLines}A`);
         for (let i = 0; i < totalLines; i++) {
-          process.stdout.write('\r\x1B[K\n');
+          process.stdout.write("\r\x1B[K\n");
         }
         process.stdout.write(`\x1B[${totalLines}A`);
       }
 
       // Top bar
-      process.stdout.write('\r\x1B[K');
+      process.stdout.write("\r\x1B[K");
       console.log(drawBar());
 
       // Progress indicator
-      process.stdout.write('\r\x1B[K');
-      console.log(colors.dim(`  Question ${currentQuestionIndex + 1}/${questions.length}`));
+      process.stdout.write("\r\x1B[K");
+      console.log(
+        colors.dim(
+          `  Question ${currentQuestionIndex + 1}/${questions.length}`,
+        ),
+      );
 
       // Question text
       const questionLines = wordWrap(q.question, termWidth - 1);
       questionLines.forEach((line) => {
-        process.stdout.write('\r\x1B[K');
+        process.stdout.write("\r\x1B[K");
         console.log(colors.primary(line));
       });
 
@@ -171,12 +186,12 @@ export function createMultiQuestionWizard(
       q.options.forEach((opt, i) => {
         const num = `${i + 1}.`;
         const prefix = i === selectedIdx ? `› ${num} ` : `  ${num} `;
-        const desc = opt.description ? ` - ${opt.description}` : '';
+        const desc = opt.description ? ` - ${opt.description}` : "";
         const fullText = prefix + opt.label + desc;
-        const wrappedLines = wordWrap(fullText, termWidth - 1, '       ');
+        const wrappedLines = wordWrap(fullText, termWidth - 1, "       ");
 
         wrappedLines.forEach((line, lineIdx) => {
-          process.stdout.write('\r\x1B[K');
+          process.stdout.write("\r\x1B[K");
           if (lineIdx === 0) {
             const prefixAndLabel = prefix + opt.label;
             if (i === selectedIdx) {
@@ -184,14 +199,18 @@ export function createMultiQuestionWizard(
                 process.stdout.write(colors.primary(line));
               } else {
                 process.stdout.write(colors.primary(prefixAndLabel));
-                process.stdout.write(chalk.white(line.slice(prefixAndLabel.length)));
+                process.stdout.write(
+                  chalk.white(line.slice(prefixAndLabel.length)),
+                );
               }
             } else {
               if (line.length <= prefixAndLabel.length) {
                 process.stdout.write(colors.dim(line));
               } else {
                 process.stdout.write(colors.dim(prefixAndLabel));
-                process.stdout.write(chalk.white(line.slice(prefixAndLabel.length)));
+                process.stdout.write(
+                  chalk.white(line.slice(prefixAndLabel.length)),
+                );
               }
             }
           } else {
@@ -202,16 +221,17 @@ export function createMultiQuestionWizard(
       });
 
       // Navigation hint
-      process.stdout.write('\r\x1B[K');
-      const navHint = currentQuestionIndex === 0
-        ? '↑↓ select • Enter confirm • → next'
-        : currentQuestionIndex === questions.length - 1
-          ? '↑↓ select • Enter confirm • ← back'
-          : '↑↓ select • Enter confirm • ←→ navigate';
+      process.stdout.write("\r\x1B[K");
+      const navHint =
+        currentQuestionIndex === 0
+          ? "↑↓ select • Enter confirm • → next"
+          : currentQuestionIndex === questions.length - 1
+            ? "↑↓ select • Enter confirm • ← back"
+            : "↑↓ select • Enter confirm • ←→ navigate";
       console.log(colors.dim(`  ${navHint}`));
 
       // Bottom bar
-      process.stdout.write('\r\x1B[K');
+      process.stdout.write("\r\x1B[K");
       console.log(drawBar());
     };
 
@@ -220,31 +240,38 @@ export function createMultiQuestionWizard(
 
       if (clearFirst) {
         // Clear previous display (could be question or summary)
-        const prevLines = showingSummary ? totalLines : getQuestionDisplayLines(currentQuestionIndex);
+        const prevLines = showingSummary
+          ? totalLines
+          : getQuestionDisplayLines(currentQuestionIndex);
         process.stdout.write(`\x1B[${prevLines}A`);
         for (let i = 0; i < Math.max(prevLines, totalLines); i++) {
-          process.stdout.write('\r\x1B[K\n');
+          process.stdout.write("\r\x1B[K\n");
         }
         process.stdout.write(`\x1B[${Math.max(prevLines, totalLines)}A`);
       }
 
       // Top bar
-      process.stdout.write('\r\x1B[K');
+      process.stdout.write("\r\x1B[K");
       console.log(drawBar());
 
       // Header
-      process.stdout.write('\r\x1B[K');
-      console.log(colors.primary('  Review your answers'));
+      process.stdout.write("\r\x1B[K");
+      console.log(colors.primary("  Review your answers"));
 
       // Blank line
-      process.stdout.write('\r\x1B[K');
+      process.stdout.write("\r\x1B[K");
       console.log();
 
       // Questions and answers
       questions.forEach((q, i) => {
-        process.stdout.write('\r\x1B[K');
-        const shortQ = q.header || q.question.slice(0, 30) + (q.question.length > 30 ? '...' : '');
-        const answerLabel = q.options.find(o => o.value === answers[i])?.label || answers[i] || '(no answer)';
+        process.stdout.write("\r\x1B[K");
+        const shortQ =
+          q.header ||
+          q.question.slice(0, 30) + (q.question.length > 30 ? "..." : "");
+        const answerLabel =
+          q.options.find((o) => o.value === answers[i])?.label ||
+          answers[i] ||
+          "(no answer)";
 
         if (i === summarySelectedIndex) {
           console.log(colors.primary(`› ${i + 1}. ${shortQ}`));
@@ -252,24 +279,26 @@ export function createMultiQuestionWizard(
           console.log(colors.dim(`  ${i + 1}. ${shortQ}`));
         }
 
-        process.stdout.write('\r\x1B[K');
+        process.stdout.write("\r\x1B[K");
         console.log(chalk.white(`     ${answerLabel}`));
       });
 
       // Blank line
-      process.stdout.write('\r\x1B[K');
+      process.stdout.write("\r\x1B[K");
       console.log();
 
       // Instruction
-      process.stdout.write('\r\x1B[K');
+      process.stdout.write("\r\x1B[K");
       if (summarySelectedIndex === questions.length) {
-        console.log(colors.primary('› Submit answers') + colors.dim(' • ↑ to edit'));
+        console.log(
+          colors.primary("› Submit answers") + colors.dim(" • ↑ to edit"),
+        );
       } else {
-        console.log(colors.dim('  ↑↓ select • Enter to edit • ↓ to Submit'));
+        console.log(colors.dim("  ↑↓ select • Enter to edit • ↓ to Submit"));
       }
 
       // Bottom bar
-      process.stdout.write('\r\x1B[K');
+      process.stdout.write("\r\x1B[K");
       console.log(drawBar());
     };
 
@@ -286,7 +315,7 @@ export function createMultiQuestionWizard(
     };
 
     // Hide cursor during selection
-    process.stdout.write('\x1B[?25l');
+    process.stdout.write("\x1B[?25l");
 
     // Initial draw
     drawQuestion();
@@ -297,36 +326,39 @@ export function createMultiQuestionWizard(
     process.stdin.setRawMode(true);
     process.stdin.resume();
 
-    let escapeBuffer = '';
+    let escapeBuffer = "";
     let escapeTimeout: NodeJS.Timeout | null = null;
 
     const cleanup = () => {
-      process.stdout.write('\x1B[?25h'); // Show cursor again
+      process.stdout.write("\x1B[?25h"); // Show cursor again
       process.stdin.pause(); // Stop receiving data during transition
       process.stdin.setRawMode(false);
-      process.stdin.removeListener('data', handleKeypress);
+      process.stdin.removeListener("data", handleKeypress);
       if (escapeTimeout) clearTimeout(escapeTimeout);
     };
 
     const processKey = (key: string) => {
-      if (key === '\x03') {
-        process.stdout.write('\x1B[?25h'); // Show cursor before exit
+      if (key === "\x03") {
+        process.stdout.write("\x1B[?25h"); // Show cursor before exit
         cleanup();
-        console.log('\n');
+        console.log("\n");
         process.exit(0);
       }
 
       if (showingSummary) {
         // Summary mode
-        if (key === '\x1b[A' || key === '\x1bOA') {
+        if (key === "\x1b[A" || key === "\x1bOA") {
           // Up
           summarySelectedIndex = Math.max(0, summarySelectedIndex - 1);
           redrawSummary();
-        } else if (key === '\x1b[B' || key === '\x1bOB') {
+        } else if (key === "\x1b[B" || key === "\x1bOB") {
           // Down
-          summarySelectedIndex = Math.min(questions.length, summarySelectedIndex + 1);
+          summarySelectedIndex = Math.min(
+            questions.length,
+            summarySelectedIndex + 1,
+          );
           redrawSummary();
-        } else if (key === '\r' || key === '\n') {
+        } else if (key === "\r" || key === "\n") {
           // Enter
           if (summarySelectedIndex === questions.length) {
             // Submit
@@ -334,13 +366,13 @@ export function createMultiQuestionWizard(
             const totalLines = getSummaryDisplayLines();
             process.stdout.write(`\x1B[${totalLines}A`);
             for (let i = 0; i < totalLines; i++) {
-              process.stdout.write('\r\x1B[K\n');
+              process.stdout.write("\r\x1B[K\n");
             }
             process.stdout.write(`\x1B[${totalLines}A`);
 
             const result: Record<string, string> = {};
             questions.forEach((q, i) => {
-              result[q.question] = answers[i] || q.options[0]?.value || '';
+              result[q.question] = answers[i] || q.options[0]?.value || "";
             });
             resolve(result);
           } else {
@@ -353,7 +385,7 @@ export function createMultiQuestionWizard(
             const linesToClear = Math.max(summaryLines, questionLines) + 2;
             process.stdout.write(`\x1B[${linesToClear}A`);
             for (let i = 0; i < linesToClear; i++) {
-              process.stdout.write('\r\x1B[K\n');
+              process.stdout.write("\r\x1B[K\n");
             }
             // Move up by the ACTUAL lines to draw (not the clear buffer)
             process.stdout.write(`\x1B[${questionLines}A`);
@@ -366,15 +398,18 @@ export function createMultiQuestionWizard(
       // Question mode
       const q = questions[currentQuestionIndex];
 
-      if (key === '\x1b[A' || key === '\x1bOA') {
+      if (key === "\x1b[A" || key === "\x1bOA") {
         // Up arrow - select previous option
-        selectedIndices[currentQuestionIndex] = (selectedIndices[currentQuestionIndex] - 1 + q.options.length) % q.options.length;
+        selectedIndices[currentQuestionIndex] =
+          (selectedIndices[currentQuestionIndex] - 1 + q.options.length) %
+          q.options.length;
         redrawQuestion();
-      } else if (key === '\x1b[B' || key === '\x1bOB') {
+      } else if (key === "\x1b[B" || key === "\x1bOB") {
         // Down arrow - select next option
-        selectedIndices[currentQuestionIndex] = (selectedIndices[currentQuestionIndex] + 1) % q.options.length;
+        selectedIndices[currentQuestionIndex] =
+          (selectedIndices[currentQuestionIndex] + 1) % q.options.length;
         redrawQuestion();
-      } else if (key === '\x1b[D' || key === '\x1bOD') {
+      } else if (key === "\x1b[D" || key === "\x1bOD") {
         // Left arrow - go to previous question
         if (currentQuestionIndex > 0) {
           const prevLines = getQuestionDisplayLines(currentQuestionIndex);
@@ -384,15 +419,18 @@ export function createMultiQuestionWizard(
           const linesToClear = Math.max(prevLines, newLines) + 2;
           process.stdout.write(`\x1B[${linesToClear}A`);
           for (let i = 0; i < linesToClear; i++) {
-            process.stdout.write('\r\x1B[K\n');
+            process.stdout.write("\r\x1B[K\n");
           }
           // Move up by the ACTUAL lines to draw (not the clear buffer)
           process.stdout.write(`\x1B[${newLines}A`);
           drawQuestion();
         }
-      } else if (key === '\x1b[C' || key === '\x1bOC') {
+      } else if (key === "\x1b[C" || key === "\x1bOC") {
         // Right arrow - go to next question (if answered)
-        if (currentQuestionIndex < questions.length - 1 && answers[currentQuestionIndex] !== null) {
+        if (
+          currentQuestionIndex < questions.length - 1 &&
+          answers[currentQuestionIndex] !== null
+        ) {
           const prevLines = getQuestionDisplayLines(currentQuestionIndex);
           currentQuestionIndex++;
           const newLines = getQuestionDisplayLines(currentQuestionIndex);
@@ -400,15 +438,16 @@ export function createMultiQuestionWizard(
           const linesToClear = Math.max(prevLines, newLines) + 2;
           process.stdout.write(`\x1B[${linesToClear}A`);
           for (let i = 0; i < linesToClear; i++) {
-            process.stdout.write('\r\x1B[K\n');
+            process.stdout.write("\r\x1B[K\n");
           }
           // Move up by the ACTUAL lines to draw (not the clear buffer)
           process.stdout.write(`\x1B[${newLines}A`);
           drawQuestion();
         }
-      } else if (key === '\r' || key === '\n') {
+      } else if (key === "\r" || key === "\n") {
         // Enter - confirm selection
-        answers[currentQuestionIndex] = q.options[selectedIndices[currentQuestionIndex]].value;
+        answers[currentQuestionIndex] =
+          q.options[selectedIndices[currentQuestionIndex]].value;
 
         if (currentQuestionIndex < questions.length - 1) {
           // Move to next question
@@ -419,7 +458,7 @@ export function createMultiQuestionWizard(
           const linesToClear = Math.max(prevLines, newLines) + 2;
           process.stdout.write(`\x1B[${linesToClear}A`);
           for (let i = 0; i < linesToClear; i++) {
-            process.stdout.write('\r\x1B[K\n');
+            process.stdout.write("\r\x1B[K\n");
           }
           // Move up by the ACTUAL lines to draw (not the clear buffer)
           process.stdout.write(`\x1B[${newLines}A`);
@@ -432,7 +471,7 @@ export function createMultiQuestionWizard(
           const linesToClear = Math.max(questionLines, summaryLines) + 2;
           process.stdout.write(`\x1B[${linesToClear}A`);
           for (let i = 0; i < linesToClear; i++) {
-            process.stdout.write('\r\x1B[K\n');
+            process.stdout.write("\r\x1B[K\n");
           }
           // Move up by the ACTUAL lines to draw (not the clear buffer)
           process.stdout.write(`\x1B[${summaryLines}A`);
@@ -452,14 +491,14 @@ export function createMultiQuestionWizard(
           if (escapeBuffer.length >= 3) {
             if (escapeTimeout) clearTimeout(escapeTimeout);
             processKey(escapeBuffer);
-            escapeBuffer = '';
+            escapeBuffer = "";
           }
-        } else if (char === '\x1b') {
+        } else if (char === "\x1b") {
           escapeBuffer = char;
           if (escapeTimeout) clearTimeout(escapeTimeout);
           escapeTimeout = setTimeout(() => {
-            if (escapeBuffer === '\x1b') processKey('\x1b');
-            escapeBuffer = '';
+            if (escapeBuffer === "\x1b") processKey("\x1b");
+            escapeBuffer = "";
           }, 50);
         } else {
           processKey(char);
@@ -467,14 +506,14 @@ export function createMultiQuestionWizard(
       }
     };
 
-    process.stdin.on('data', handleKeypress);
+    process.stdin.on("data", handleKeypress);
   });
 }
 
 export function createInteractiveSelect(
   rl: readline.Interface,
   question: string,
-  options: SelectOption[]
+  options: SelectOption[],
 ): Promise<string> {
   return new Promise((resolve) => {
     // Non-TTY fallback
@@ -482,8 +521,8 @@ export function createInteractiveSelect(
       console.log(question);
       options.forEach((opt, i) => console.log(`  ${i + 1}. ${opt.label}`));
       console.log(`  ${options.length + 1}. Other (type your own)`);
-      process.stdout.write(colors.dim('› '));
-      rl.once('line', (input) => {
+      process.stdout.write(colors.dim("› "));
+      rl.once("line", (input) => {
         const num = parseInt(input.trim());
         if (num > 0 && num <= options.length) {
           resolve(options[num - 1].value);
@@ -495,21 +534,28 @@ export function createInteractiveSelect(
     }
 
     // Add "Other" option
-    const allOptions = [...options, { label: 'Other (type your own)', value: '__OTHER__' }];
+    const allOptions = [
+      ...options,
+      { label: "Other (type your own)", value: "__OTHER__" },
+    ];
     let selectedIndex = 0;
     let isTypingCustom = false;
-    let customInput = '';
+    let customInput = "";
 
     // Get terminal width for wrapping calculations
     const termWidth = process.stdout.columns || 80;
 
     // Word-wrap text to fit within maxWidth, returning array of lines
-    const wordWrap = (text: string, maxWidth: number, indent: string = ''): string[] => {
+    const wordWrap = (
+      text: string,
+      maxWidth: number,
+      indent: string = "",
+    ): string[] => {
       if (text.length <= maxWidth) return [text];
 
-      const words = text.split(' ');
+      const words = text.split(" ");
       const lines: string[] = [];
-      let currentLine = '';
+      let currentLine = "";
 
       for (const word of words) {
         const testLine = currentLine ? `${currentLine} ${word}` : word;
@@ -533,10 +579,10 @@ export function createInteractiveSelect(
 
       // Each option: prefix + label + description
       allOptions.forEach((opt) => {
-        const prefix = '  1. '; // all prefixes same length
-        const desc = opt.description ? ` - ${opt.description}` : '';
+        const prefix = "  1. "; // all prefixes same length
+        const desc = opt.description ? ` - ${opt.description}` : "";
         const fullLine = prefix + opt.label + desc;
-        total += wordWrap(fullLine, termWidth - 1, '       ').length;
+        total += wordWrap(fullLine, termWidth - 1, "       ").length;
       });
 
       total += 1; // bottom bar
@@ -545,13 +591,13 @@ export function createInteractiveSelect(
 
     const drawOptions = () => {
       // Top gray bar
-      process.stdout.write('\r\x1B[K');
+      process.stdout.write("\r\x1B[K");
       console.log(drawBar());
 
       // Question in green (word wrap)
       const questionLines = wordWrap(question, termWidth - 1);
       questionLines.forEach((line) => {
-        process.stdout.write('\r\x1B[K');
+        process.stdout.write("\r\x1B[K");
         console.log(colors.primary(line));
       });
 
@@ -560,14 +606,14 @@ export function createInteractiveSelect(
         const num = `${i + 1}.`;
         const prefix = i === selectedIndex ? `› ${num} ` : `  ${num} `;
         const label = opt.label;
-        const desc = opt.description ? ` - ${opt.description}` : '';
+        const desc = opt.description ? ` - ${opt.description}` : "";
         const fullText = prefix + label + desc;
 
         // Word wrap with indent for continuation lines
-        const wrappedLines = wordWrap(fullText, termWidth - 1, '       ');
+        const wrappedLines = wordWrap(fullText, termWidth - 1, "       ");
 
         wrappedLines.forEach((line, lineIdx) => {
-          process.stdout.write('\r\x1B[K');
+          process.stdout.write("\r\x1B[K");
           if (lineIdx === 0) {
             // First line has the prefix styling
             if (i === selectedIndex) {
@@ -577,7 +623,9 @@ export function createInteractiveSelect(
                 process.stdout.write(colors.primary(line));
               } else {
                 process.stdout.write(colors.primary(prefixAndLabel));
-                process.stdout.write(chalk.white(line.slice(prefixAndLabel.length)));
+                process.stdout.write(
+                  chalk.white(line.slice(prefixAndLabel.length)),
+                );
               }
             } else {
               // Not selected: dim prefix+label, white description
@@ -586,7 +634,9 @@ export function createInteractiveSelect(
                 process.stdout.write(colors.dim(line));
               } else {
                 process.stdout.write(colors.dim(prefixAndLabel));
-                process.stdout.write(chalk.white(line.slice(prefixAndLabel.length)));
+                process.stdout.write(
+                  chalk.white(line.slice(prefixAndLabel.length)),
+                );
               }
             }
           } else {
@@ -598,7 +648,7 @@ export function createInteractiveSelect(
       });
 
       // Bottom gray bar
-      process.stdout.write('\r\x1B[K');
+      process.stdout.write("\r\x1B[K");
       console.log(drawBar());
     };
 
@@ -618,27 +668,30 @@ export function createInteractiveSelect(
       process.stdout.write(`\x1B[${totalLines}A`);
 
       // Top gray bar
-      process.stdout.write('\r\x1B[K');
-      console.log(drawBar());
+      process.stdout.write("\r\x1B[K");
+      process.stdout.write(drawBar() + "\n");
 
       // Question
-      process.stdout.write('\r\x1B[K');
-      console.log(colors.primary(question));
+      process.stdout.write("\r\x1B[K");
+      process.stdout.write(colors.primary(question) + "\n");
 
       // Instruction
-      process.stdout.write('\r\x1B[K');
-      console.log(colors.dim('  Type your answer (Esc to go back):'));
+      process.stdout.write("\r\x1B[K");
+      process.stdout.write(
+        colors.dim("  Type your answer (Esc to go back):") + "\n",
+      );
 
       // Input line
-      process.stdout.write('\r\x1B[K');
-      process.stdout.write(colors.primary('  › ') + customInput);
+      process.stdout.write("\r\x1B[K");
+      process.stdout.write(colors.primary("  › ") + customInput);
 
-      // Save cursor, draw bottom bar, restore
-      process.stdout.write('\x1B[s');
-      console.log();
-      process.stdout.write('\r\x1B[K');
-      console.log(drawBar());
-      process.stdout.write('\x1B[u');
+      // Draw bottom bar below current line
+      process.stdout.write("\n\r\x1B[K");
+      process.stdout.write(drawBar());
+
+      // Move cursor back to end of input line
+      process.stdout.write("\x1B[1A"); // Move up 1 line
+      readline.cursorTo(process.stdout, 4 + customInput.length); // Position after '  › ' + input
     };
 
     // Initial draw
@@ -649,62 +702,62 @@ export function createInteractiveSelect(
     process.stdin.resume();
 
     // Buffer for escape sequence handling
-    let escapeBuffer = '';
+    let escapeBuffer = "";
     let escapeTimeout: NodeJS.Timeout | null = null;
 
     const cleanup = () => {
       process.stdin.pause(); // Stop receiving data during transition
       process.stdin.setRawMode(false);
-      process.stdin.removeListener('data', handleKeypress);
+      process.stdin.removeListener("data", handleKeypress);
       if (escapeTimeout) clearTimeout(escapeTimeout);
     };
 
     const processKey = (key: string) => {
       // Ctrl+C - exit
-      if (key === '\x03') {
+      if (key === "\x03") {
         cleanup();
-        console.log('\n');
+        console.log("\n");
         process.exit(0);
       }
 
       if (isTypingCustom) {
         // Custom input mode
-        if (key === '\r' || key === '\n') {
+        if (key === "\r" || key === "\n") {
           // Submit custom input - clear display and resolve
           cleanup();
           // Clear the custom input display
-          process.stdout.write('\x1B[5A'); // Move up 5 lines
+          process.stdout.write("\x1B[5A"); // Move up 5 lines
           for (let i = 0; i < 5; i++) {
-            process.stdout.write('\r\x1B[K\n');
+            process.stdout.write("\r\x1B[K\n");
           }
-          process.stdout.write('\x1B[5A'); // Move back up
-          resolve(customInput || options[0]?.value || '');
+          process.stdout.write("\x1B[5A"); // Move back up
+          resolve(customInput || options[0]?.value || "");
           return;
         }
-        if (key === '\x7f' || key === '\b') {
+        if (key === "\x7f" || key === "\b") {
           // Backspace
           customInput = customInput.slice(0, -1);
           drawCustomInput();
           return;
         }
-        if (key === '\x1b') {
+        if (key === "\x1b") {
           // Escape - go back to selection
           isTypingCustom = false;
-          customInput = '';
+          customInput = "";
           // Clear custom mode display (5 lines) and prepare for select redraw
           const selectLines = getTotalVisualLines();
           // Move up to clear the 5-line custom mode
-          process.stdout.write('\x1B[5A');
+          process.stdout.write("\x1B[5A");
           // Clear enough lines for select display
           for (let i = 0; i < selectLines; i++) {
-            process.stdout.write('\r\x1B[K\n');
+            process.stdout.write("\r\x1B[K\n");
           }
           // Move back up and redraw
           process.stdout.write(`\x1B[${selectLines}A`);
           drawOptions();
           return;
         }
-        if (key.length === 1 && key >= ' ') {
+        if (key.length === 1 && key >= " ") {
           customInput += key;
           drawCustomInput();
         }
@@ -712,42 +765,46 @@ export function createInteractiveSelect(
       }
 
       // Selection mode - handle arrow keys
-      if (key === '\x1b[A' || key === '\x1bOA') {
+      if (key === "\x1b[A" || key === "\x1bOA") {
         // Up arrow
-        selectedIndex = (selectedIndex - 1 + allOptions.length) % allOptions.length;
+        selectedIndex =
+          (selectedIndex - 1 + allOptions.length) % allOptions.length;
         redraw();
-      } else if (key === '\x1b[B' || key === '\x1bOB') {
+      } else if (key === "\x1b[B" || key === "\x1bOB") {
         // Down arrow
         selectedIndex = (selectedIndex + 1) % allOptions.length;
         redraw();
-      } else if (key === '\r' || key === '\n') {
+      } else if (key === "\r" || key === "\n") {
         // Enter - select
-        if (allOptions[selectedIndex].value === '__OTHER__') {
+        if (allOptions[selectedIndex].value === "__OTHER__") {
           // Switch to custom input mode
           isTypingCustom = true;
           // Clear current display
           const currentLines = getTotalVisualLines();
           process.stdout.write(`\x1B[${currentLines}A`);
           for (let i = 0; i < currentLines; i++) {
-            process.stdout.write('\r\x1B[K\n');
+            process.stdout.write("\r\x1B[K\n");
           }
           process.stdout.write(`\x1B[${currentLines}A`);
           // Draw custom input mode
-          console.log(drawBar());
-          console.log(colors.primary(question));
-          console.log(colors.dim('  Type your answer (Esc to go back):'));
-          process.stdout.write(colors.primary('  › '));
-          process.stdout.write('\x1B[s');
-          console.log();
-          console.log(drawBar());
-          process.stdout.write('\x1B[u');
+          process.stdout.write(drawBar() + "\n");
+          process.stdout.write(colors.primary(question) + "\n");
+          process.stdout.write(
+            colors.dim("  Type your answer (Esc to go back):") + "\n",
+          );
+          process.stdout.write(colors.primary("  › "));
+          process.stdout.write("\n");
+          process.stdout.write(drawBar());
+          // Move cursor back to input line
+          process.stdout.write("\x1B[1A"); // Move up 1 line
+          readline.cursorTo(process.stdout, 4); // Position after '  › '
         } else {
           cleanup();
           // Clear the select display
           const totalLines = getTotalVisualLines();
           process.stdout.write(`\x1B[${totalLines}A`);
           for (let i = 0; i < totalLines; i++) {
-            process.stdout.write('\r\x1B[K\n');
+            process.stdout.write("\r\x1B[K\n");
           }
           process.stdout.write(`\x1B[${totalLines}A`);
           resolve(allOptions[selectedIndex].value);
@@ -770,18 +827,18 @@ export function createInteractiveSelect(
             // Got full escape sequence (e.g., \x1b[A or \x1bOA)
             if (escapeTimeout) clearTimeout(escapeTimeout);
             processKey(escapeBuffer);
-            escapeBuffer = '';
+            escapeBuffer = "";
           }
-        } else if (char === '\x1b') {
+        } else if (char === "\x1b") {
           // Start of escape sequence
           escapeBuffer = char;
           // Set timeout in case it's just a lone escape key
           if (escapeTimeout) clearTimeout(escapeTimeout);
           escapeTimeout = setTimeout(() => {
-            if (escapeBuffer === '\x1b') {
-              processKey('\x1b'); // Just escape key
+            if (escapeBuffer === "\x1b") {
+              processKey("\x1b"); // Just escape key
             }
-            escapeBuffer = '';
+            escapeBuffer = "";
           }, 50);
         } else {
           // Regular character
@@ -790,7 +847,7 @@ export function createInteractiveSelect(
       }
     };
 
-    process.stdin.on('data', handleKeypress);
+    process.stdin.on("data", handleKeypress);
   });
 }
 
@@ -798,23 +855,34 @@ export function createInteractiveSelect(
  * Detect if Claude suggested new/different code during discuss mode
  * Looks at recent assistant messages for code blocks
  */
-export function detectCodeInDiscussion(messages: Array<{ role: string; content: unknown }>): string | null {
+export function detectCodeInDiscussion(
+  messages: Array<{ role: string; content: unknown }>,
+): string | null {
   // Look at last few assistant messages
   const recentMessages = messages
-    .filter(m => m.role === 'assistant')
+    .filter((m) => m.role === "assistant")
     .slice(-3);
 
   for (const msg of recentMessages) {
-    const content = typeof msg.content === 'string' ? msg.content :
-      Array.isArray(msg.content) ?
-        msg.content.map((c: { type?: string; text?: string }) => c.type === 'text' ? c.text : '').join('') : '';
+    const content =
+      typeof msg.content === "string"
+        ? msg.content
+        : Array.isArray(msg.content)
+          ? msg.content
+              .map((c: { type?: string; text?: string }) =>
+                c.type === "text" ? c.text : "",
+              )
+              .join("")
+          : "";
 
     // Look for code blocks
-    const codeBlockMatch = content.match(/```(?:bash|sh|shell|typescript|ts|javascript|js)?\n?([\s\S]*?)```/);
+    const codeBlockMatch = content.match(
+      /```(?:bash|sh|shell|typescript|ts|javascript|js)?\n?([\s\S]*?)```/,
+    );
     if (codeBlockMatch) {
       const code = codeBlockMatch[1].trim();
       // Only return if it looks like substantial code (not just a one-liner example)
-      if (code.length > 20 || code.includes('\n')) {
+      if (code.length > 20 || code.includes("\n")) {
         return code;
       }
     }
@@ -829,49 +897,54 @@ export function detectCodeInDiscussion(messages: Array<{ role: string; content: 
 export async function promptPlanUpdate(
   rl: readline.Interface,
   newCode: string,
-  currentCode: string
+  currentCode: string,
 ): Promise<boolean> {
   console.log();
-  console.log(colors.orange('New code was discussed that differs from your plan.'));
+  console.log(
+    colors.orange("New code was discussed that differs from your plan."),
+  );
   console.log();
-  console.log(colors.dim('Suggested code:'));
-  console.log(colors.dim('─'.repeat(60)));
+  console.log(colors.dim("Suggested code:"));
+  console.log(colors.dim("─".repeat(60)));
   // Show first few lines of new code
-  const previewLines = newCode.split('\n').slice(0, 5);
-  previewLines.forEach(line => console.log(colors.tan(line)));
-  if (newCode.split('\n').length > 5) {
-    console.log(colors.dim(`  ... (${newCode.split('\n').length - 5} more lines)`));
+  const previewLines = newCode.split("\n").slice(0, 5);
+  previewLines.forEach((line) => console.log(colors.tan(line)));
+  if (newCode.split("\n").length > 5) {
+    console.log(
+      colors.dim(`  ... (${newCode.split("\n").length - 5} more lines)`),
+    );
   }
-  console.log(colors.dim('─'.repeat(60)));
+  console.log(colors.dim("─".repeat(60)));
   console.log();
 
-  const answer = await createInteractiveSelect(rl,
-    'Update your learning plan with this code?',
+  const answer = await createInteractiveSelect(
+    rl,
+    "Update your learning plan with this code?",
     [
-      { label: 'No, continue with original plan', value: 'no' },
-      { label: 'Yes, use the new code', value: 'yes' },
-    ]
+      { label: "No, continue with original plan", value: "no" },
+      { label: "Yes, use the new code", value: "yes" },
+    ],
   );
 
-  return answer === 'yes';
+  return answer === "yes";
 }
 
 /**
  * A single line of code with its comment
  */
 export interface CodeLine {
-  comment: string;  // The // comment explaining this line
-  code: string;     // The actual code to type
+  comment: string; // The // comment explaining this line
+  code: string; // The actual code to type
 }
 
 /**
  * Result of extracting code from Claude's response
  */
 export interface ExtractedCode {
-  code: string;              // For single-line commands
+  code: string; // For single-line commands
   explanation: string | null;
-  isMultiLine: boolean;      // True for heredocs with interleaved comments
-  lines?: CodeLine[];        // Array of comment+code pairs for heredocs
+  isMultiLine: boolean; // True for heredocs with interleaved comments
+  lines?: CodeLine[]; // Array of comment+code pairs for heredocs
 }
 
 /**
@@ -882,58 +955,76 @@ function generateExplanation(command: string): string | null {
   const cmd = parts[0];
 
   switch (cmd) {
-    case 'mkdir':
-      if (parts.includes('-p')) {
+    case "mkdir":
+      if (parts.includes("-p")) {
         return `mkdir = make directory, -p = create parent directories if needed, ${parts[parts.length - 1]} = folder name`;
       }
       return `mkdir = make directory, ${parts[parts.length - 1]} = folder name`;
 
-    case 'cat':
-      if (command.includes('<<')) {
+    case "cat":
+      if (command.includes("<<")) {
         const fileMatch = command.match(/>\s*(\S+)/);
-        const file = fileMatch ? fileMatch[1] : 'file';
+        const file = fileMatch ? fileMatch[1] : "file";
         return `creates ${file} with the content you type until EOF`;
       }
       return `cat = display file contents`;
 
-    case 'touch':
+    case "touch":
       return `touch = create empty file or update timestamp`;
 
-    case 'git':
+    case "git":
       const gitCmd = parts[1];
       switch (gitCmd) {
-        case 'init': return 'initializes a new git repository';
-        case 'add': return parts[2] === '.' ? 'stages all changes for commit' : `stages ${parts[2]} for commit`;
-        case 'commit': return 'saves staged changes with a message';
-        case 'status': return 'shows current state of working directory';
-        case 'log': return 'shows commit history';
-        case 'diff': return 'shows changes not yet staged';
-        case 'push': return 'uploads commits to remote repository';
-        case 'pull': return 'downloads and integrates remote changes';
-        default: return `git ${gitCmd} command`;
+        case "init":
+          return "initializes a new git repository";
+        case "add":
+          return parts[2] === "."
+            ? "stages all changes for commit"
+            : `stages ${parts[2]} for commit`;
+        case "commit":
+          return "saves staged changes with a message";
+        case "status":
+          return "shows current state of working directory";
+        case "log":
+          return "shows commit history";
+        case "diff":
+          return "shows changes not yet staged";
+        case "push":
+          return "uploads commits to remote repository";
+        case "pull":
+          return "downloads and integrates remote changes";
+        default:
+          return `git ${gitCmd} command`;
       }
 
-    case 'npm':
+    case "npm":
       const npmCmd = parts[1];
       switch (npmCmd) {
-        case 'init': return 'creates package.json for your project';
-        case 'install': return parts.length > 2 ? `installs ${parts[2]} package` : 'installs all dependencies';
-        case 'run': return `runs the "${parts[2]}" script from package.json`;
-        case 'test': return 'runs your test suite';
-        default: return `npm ${npmCmd} command`;
+        case "init":
+          return "creates package.json for your project";
+        case "install":
+          return parts.length > 2
+            ? `installs ${parts[2]} package`
+            : "installs all dependencies";
+        case "run":
+          return `runs the "${parts[2]}" script from package.json`;
+        case "test":
+          return "runs your test suite";
+        default:
+          return `npm ${npmCmd} command`;
       }
 
-    case 'npx':
+    case "npx":
       return `npx = run ${parts[1]} without installing globally`;
 
-    case 'node':
+    case "node":
       return `runs ${parts[1]} with Node.js`;
 
-    case 'tsc':
-      return 'compiles TypeScript to JavaScript';
+    case "tsc":
+      return "compiles TypeScript to JavaScript";
 
-    case 'echo':
-      return 'prints text to the terminal';
+    case "echo":
+      return "prints text to the terminal";
 
     default:
       return null;
@@ -950,7 +1041,7 @@ function generateExplanation(command: string): string | null {
  * - Any line that looks like an executable command
  */
 export function extractExpectedCode(text: string): ExtractedCode | null {
-  const lines = text.split('\n');
+  const lines = text.split("\n");
 
   // Look for interleaved heredoc format:
   // // comment
@@ -962,7 +1053,7 @@ export function extractExpectedCode(text: string): ExtractedCode | null {
   // EOF
   const interleavedLines: CodeLine[] = [];
   let inInterleavedBlock = false;
-  let currentComment = '';
+  let currentComment = "";
   let foundHeredocStart = false;
 
   for (let i = 0; i < lines.length; i++) {
@@ -970,11 +1061,11 @@ export function extractExpectedCode(text: string): ExtractedCode | null {
     const trimmed = line.trim();
 
     // Check for // comment line
-    if (trimmed.startsWith('//')) {
+    if (trimmed.startsWith("//")) {
       currentComment = trimmed.slice(2).trim();
       // Look ahead - if next line is code, we're in an interleaved block
       const nextLine = lines[i + 1]?.trim();
-      if (nextLine && !nextLine.startsWith('//')) {
+      if (nextLine && !nextLine.startsWith("//")) {
         inInterleavedBlock = true;
       }
       continue;
@@ -989,20 +1080,20 @@ export function extractExpectedCode(text: string): ExtractedCode | null {
 
       interleavedLines.push({
         comment: currentComment,
-        code: trimmed
+        code: trimmed,
       });
-      currentComment = '';
+      currentComment = "";
 
       // Check if this is EOF (end of heredoc)
-      if (trimmed === 'EOF' && foundHeredocStart) {
+      if (trimmed === "EOF" && foundHeredocStart) {
         // We found a complete interleaved heredoc block
         const fileMatch = interleavedLines[0]?.code.match(/>\s*(\S+)/);
-        const file = fileMatch ? fileMatch[1] : 'file';
+        const file = fileMatch ? fileMatch[1] : "file";
         return {
-          code: interleavedLines.map(l => l.code).join('\n'),
+          code: interleavedLines.map((l) => l.code).join("\n"),
           explanation: `creates ${file}`,
           isMultiLine: true,
-          lines: interleavedLines
+          lines: interleavedLines,
         };
       }
     }
@@ -1011,38 +1102,40 @@ export function extractExpectedCode(text: string): ExtractedCode | null {
   // If we found an interleaved block but no EOF (partial match), still return it
   if (interleavedLines.length > 0 && foundHeredocStart) {
     const fileMatch = interleavedLines[0]?.code.match(/>\s*(\S+)/);
-    const file = fileMatch ? fileMatch[1] : 'file';
+    const file = fileMatch ? fileMatch[1] : "file";
     return {
-      code: interleavedLines.map(l => l.code).join('\n'),
+      code: interleavedLines.map((l) => l.code).join("\n"),
       explanation: `creates ${file}`,
       isMultiLine: true,
-      lines: interleavedLines
+      lines: interleavedLines,
     };
   }
 
   // Look for code blocks with backticks (```command``` or `command`)
-  const codeBlockMatch = text.match(/```(?:bash|sh|shell|typescript|ts|javascript|js)?\n?([\s\S]*?)```/);
+  const codeBlockMatch = text.match(
+    /```(?:bash|sh|shell|typescript|ts|javascript|js)?\n?([\s\S]*?)```/,
+  );
   if (codeBlockMatch) {
     const codeContent = codeBlockMatch[1].trim();
     // If it's a single line, treat as single command
-    if (!codeContent.includes('\n')) {
+    if (!codeContent.includes("\n")) {
       return {
         code: codeContent,
         explanation: generateExplanation(codeContent),
-        isMultiLine: false
+        isMultiLine: false,
       };
     } else {
       // Multi-line code block - parse into lines
-      const codeLines = codeContent.split('\n');
+      const codeLines = codeContent.split("\n");
       const multiLines: CodeLine[] = codeLines.map((line, idx) => ({
-        comment: idx === 0 ? 'Type the code below' : '',  // Only first line gets a comment
-        code: line
+        comment: idx === 0 ? "Type the code below" : "", // Only first line gets a comment
+        code: line,
       }));
       return {
         code: codeContent,
-        explanation: 'Type each line of code',
+        explanation: "Type each line of code",
         isMultiLine: true,
-        lines: multiLines
+        lines: multiLines,
       };
     }
   }
@@ -1052,11 +1145,15 @@ export function extractExpectedCode(text: string): ExtractedCode | null {
   if (inlineCodeMatch) {
     const code = inlineCodeMatch[1].trim();
     // Only use if it looks like a command
-    if (/^(mkdir|cat|echo|touch|git|npm|npx|node|tsc|cd|ls|pwd|chmod|rm|mv|cp)\s/.test(code)) {
+    if (
+      /^(mkdir|cat|echo|touch|git|npm|npx|node|tsc|cd|ls|pwd|chmod|rm|mv|cp)\s/.test(
+        code,
+      )
+    ) {
       return {
         code: code,
         explanation: generateExplanation(code),
-        isMultiLine: false
+        isMultiLine: false,
       };
     }
   }
@@ -1066,17 +1163,21 @@ export function extractExpectedCode(text: string): ExtractedCode | null {
     const line = lines[i];
     const trimmed = line.trim();
     // Match common commands (not preceded by //)
-    if (/^(mkdir|cat|echo|touch|git|npm|npx|node|tsc|cd|ls|pwd|chmod|rm|mv|cp)\s/.test(trimmed)) {
+    if (
+      /^(mkdir|cat|echo|touch|git|npm|npx|node|tsc|cd|ls|pwd|chmod|rm|mv|cp)\s/.test(
+        trimmed,
+      )
+    ) {
       // Check if previous line was a // comment
       const prevLine = lines[i - 1]?.trim();
-      const explanation = prevLine?.startsWith('//')
+      const explanation = prevLine?.startsWith("//")
         ? prevLine.slice(2).trim()
         : generateExplanation(trimmed);
 
       return {
         code: trimmed,
         explanation,
-        isMultiLine: false
+        isMultiLine: false,
       };
     }
   }
@@ -1088,19 +1189,25 @@ export function extractExpectedCode(text: string): ExtractedCode | null {
     const trimmed = line.trim();
 
     // Skip empty lines, comments, and prose
-    if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('#')) continue;
+    if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("#"))
+      continue;
 
     // Look for lines that look like code (contains = or starts with common patterns)
-    if (trimmed.includes('=') || /^(const|let|var|function|import|export|class|type|interface)\s/.test(trimmed)) {
+    if (
+      trimmed.includes("=") ||
+      /^(const|let|var|function|import|export|class|type|interface)\s/.test(
+        trimmed,
+      )
+    ) {
       const prevLine = lines[i - 1]?.trim();
-      const explanation = prevLine?.startsWith('//')
+      const explanation = prevLine?.startsWith("//")
         ? prevLine.slice(2).trim()
-        : 'type this code';
+        : "type this code";
 
       return {
         code: trimmed,
         explanation,
-        isMultiLine: false
+        isMultiLine: false,
       };
     }
   }
@@ -1115,13 +1222,13 @@ export function extractExpectedCode(text: string): ExtractedCode | null {
 export function createTrackedInput(
   rl: readline.Interface,
   expectedText: string | null,
-  prompt: string = '› '
+  prompt: string = "› ",
 ): Promise<string> {
   return new Promise((resolve) => {
     if (!expectedText || !process.stdin.isTTY) {
       // No tracking - use regular readline
       process.stdout.write(prompt);
-      rl.once('line', (input) => {
+      rl.once("line", (input) => {
         resolve(input);
       });
       return;
@@ -1132,10 +1239,10 @@ export function createTrackedInput(
 
     // Display target line
     console.log();
-    console.log(colors.dim('  Type this:'));
+    console.log(colors.dim("  Type this:"));
 
     // Build colored target display
-    let targetDisplay = colors.dim('  ');
+    let targetDisplay = colors.dim("  ");
     for (let i = 0; i < expectedText.length; i++) {
       if (i === 0) {
         targetDisplay += colors.orange(expectedText[i]);
@@ -1147,7 +1254,7 @@ export function createTrackedInput(
     console.log();
 
     // Current input buffer
-    let inputBuffer = '';
+    let inputBuffer = "";
 
     // Store original line position for redrawing
     const targetLineOffset = 2; // Lines above input prompt
@@ -1156,13 +1263,13 @@ export function createTrackedInput(
     process.stdout.write(colors.primary(prompt));
 
     // Handle line input
-    rl.once('line', (input) => {
+    rl.once("line", (input) => {
       inputBuffer = input;
 
       // Show final result
       const isCorrect = input === expectedText;
       if (isCorrect) {
-        console.log(colors.success('✓ Correct!'));
+        console.log(colors.success("✓ Correct!"));
       } else if (input.length > 0) {
         // Show what was different
         const accuracy = calculateAccuracy(input, expectedText);
@@ -1211,7 +1318,10 @@ export function shouldTrackInput(claudeResponse: string): ExtractedCode | null {
  * Detect if input looks like a natural language question rather than code
  * Used to let users ask questions while in code input mode
  */
-function isNaturalLanguageQuestion(input: string, expectedCode: string): boolean {
+function isNaturalLanguageQuestion(
+  input: string,
+  expectedCode: string,
+): boolean {
   const trimmed = input.trim().toLowerCase();
 
   // Empty input is not a question
@@ -1223,9 +1333,9 @@ function isNaturalLanguageQuestion(input: string, expectedCode: string): boolean
   // Check for question patterns
   const questionPatterns = [
     /^(what|why|how|when|where|which|who|can|could|would|should|is|are|does|do|will)\s/i,
-    /\?$/,  // Ends with question mark
+    /\?$/, // Ends with question mark
     /^(help|explain|tell me|show me|i don't understand|i'm confused|what's|what is)/i,
-    /^(wait|hold on|stop|actually)/i,  // User wants to pause
+    /^(wait|hold on|stop|actually)/i, // User wants to pause
   ];
 
   for (const pattern of questionPatterns) {
@@ -1260,33 +1370,33 @@ function isNaturalLanguageQuestion(input: string, expectedCode: string): boolean
 export function createTyperSharkInput(
   rl: readline.Interface,
   expectedText: string,
-  explanation: string | null
+  explanation: string | null,
 ): Promise<string> {
   return new Promise((resolve) => {
     // Non-TTY fallback to regular input
     if (!process.stdin.isTTY) {
       console.log(colors.dim(`  Type: ${expectedText}`));
-      process.stdout.write(colors.dim('› '));
-      rl.once('line', resolve);
+      process.stdout.write(colors.dim("› "));
+      rl.once("line", resolve);
       return;
     }
 
     // Check mode - in discuss mode, skip Typer Shark and accept free input
     if (isDiscussMode()) {
       console.log(colors.dim(`  Expected: ${expectedText}`));
-      process.stdout.write(colors.dim('› '));
-      rl.once('line', resolve);
+      process.stdout.write(colors.dim("› "));
+      rl.once("line", resolve);
       return;
     }
 
     // Initialize display
     initTyperSharkDisplay(expectedText, explanation || undefined);
 
-    let inputBuffer = '';
+    let inputBuffer = "";
     let correctCount = 0;
 
     // Escape sequence buffer for handling Shift+Tab etc.
-    let escapeBuffer = '';
+    let escapeBuffer = "";
     let escapeTimeout: NodeJS.Timeout | null = null;
 
     // Enable raw mode for character-by-character input
@@ -1296,28 +1406,32 @@ export function createTyperSharkInput(
     const cleanup = () => {
       process.stdin.pause(); // Stop receiving data during transition
       process.stdin.setRawMode(false);
-      process.stdin.removeListener('data', handleKeypress);
+      process.stdin.removeListener("data", handleKeypress);
       if (escapeTimeout) clearTimeout(escapeTimeout);
     };
 
     const processKey = (key: string) => {
       // Ctrl+C - exit
-      if (key === '\x03') {
+      if (key === "\x03") {
         cleanup();
-        console.log('\n');
+        console.log("\n");
         process.exit(0);
       }
 
       // Shift+Tab - cycle mode
-      if (key === '\x1b[Z') {
+      if (key === "\x1b[Z") {
         cycleMode();
         // Immediately redraw with new mode (mode footer will update)
-        redrawTyperShark(expectedText, inputBuffer, isBlockMode() ? inputBuffer.length : correctCount);
+        redrawTyperShark(
+          expectedText,
+          inputBuffer,
+          isBlockMode() ? inputBuffer.length : correctCount,
+        );
         return;
       }
 
       // Enter - submit input
-      if (key === '\r' || key === '\n') {
+      if (key === "\r" || key === "\n") {
         cleanup();
         finishTyperSharkDisplay(inputBuffer, !!explanation); // Clear display and show entered text
         resolve(inputBuffer);
@@ -1325,30 +1439,34 @@ export function createTyperSharkInput(
       }
 
       // Backspace - remove last character
-      if (key === '\x7f' || key === '\b') {
+      if (key === "\x7f" || key === "\b") {
         if (inputBuffer.length > 0) {
           // If deleting a correct character, decrease correctCount
           if (correctCount > 0 && correctCount === inputBuffer.length) {
             correctCount--;
           }
           inputBuffer = inputBuffer.slice(0, -1);
-          redrawTyperShark(expectedText, inputBuffer, isBlockMode() ? inputBuffer.length : correctCount);
+          redrawTyperShark(
+            expectedText,
+            inputBuffer,
+            isBlockMode() ? inputBuffer.length : correctCount,
+          );
         }
         return;
       }
 
       // Ignore lone escape
-      if (key === '\x1b') {
+      if (key === "\x1b") {
         return;
       }
 
       // Ignore Tab (only Shift+Tab cycles mode)
-      if (key === '\t') {
+      if (key === "\t") {
         return;
       }
 
       // Regular character
-      if (key.length === 1 && key >= ' ') {
+      if (key.length === 1 && key >= " ") {
         inputBuffer += key;
 
         // In block mode, all characters count as "correct" (free typing)
@@ -1357,7 +1475,11 @@ export function createTyperSharkInput(
         } else {
           // Tutor mode: Only increment correctCount if character matches expected
           const newCharPos = inputBuffer.length - 1;
-          if (newCharPos === correctCount && correctCount < expectedText.length && key === expectedText[correctCount]) {
+          if (
+            newCharPos === correctCount &&
+            correctCount < expectedText.length &&
+            key === expectedText[correctCount]
+          ) {
             correctCount++;
           }
         }
@@ -1377,14 +1499,14 @@ export function createTyperSharkInput(
           if (escapeBuffer.length >= 3) {
             if (escapeTimeout) clearTimeout(escapeTimeout);
             processKey(escapeBuffer);
-            escapeBuffer = '';
+            escapeBuffer = "";
           }
-        } else if (char === '\x1b') {
+        } else if (char === "\x1b") {
           escapeBuffer = char;
           if (escapeTimeout) clearTimeout(escapeTimeout);
           escapeTimeout = setTimeout(() => {
-            if (escapeBuffer === '\x1b') processKey('\x1b');
-            escapeBuffer = '';
+            if (escapeBuffer === "\x1b") processKey("\x1b");
+            escapeBuffer = "";
           }, 50);
         } else {
           processKey(char);
@@ -1392,7 +1514,7 @@ export function createTyperSharkInput(
       }
     };
 
-    process.stdin.on('data', handleKeypress);
+    process.stdin.on("data", handleKeypress);
   });
 }
 
@@ -1410,7 +1532,7 @@ export async function createMultiLineTyperSharkInput(
   rl: readline.Interface,
   lines: CodeLine[],
   explanation?: string,
-  linesToClear: number = 0
+  linesToClear: number = 0,
 ): Promise<string[]> {
   const results: string[] = [];
   const totalLineCount = lines.length;
@@ -1436,20 +1558,20 @@ export async function createMultiLineTyperSharkInput(
     console.log(colors.dim(`  // Line ${lineNum} of ${totalLineCount}`));
 
     // Generate explanatory comment for this specific line
-    const lineComment = line.comment || '';
+    const lineComment = line.comment || "";
 
     // Use single-line Typer Shark for this line (with explanatory comment)
     const result = await createTyperSharkInput(rl, line.code, lineComment);
 
     // Check if user asked a question
     if (isNaturalLanguageQuestion(result, line.code)) {
-      return ['__QUESTION__:' + result];
+      return ["__QUESTION__:" + result];
     }
 
     results.push(result);
   }
 
-  console.log(colors.success('✓ All lines entered!'));
+  console.log(colors.success("✓ All lines entered!"));
   return results;
 }
 
@@ -1462,25 +1584,28 @@ export async function createMultiLineTyperSharkInput(
 export function createFreeFormInput(
   rl: readline.Interface,
   expectedCode?: string | null,
-  hint?: string | null
+  hint?: string | null,
 ): Promise<string> {
   return new Promise((resolve) => {
     // Non-TTY fallback
     if (!process.stdin.isTTY) {
-      process.stdout.write(colors.dim('› '));
-      const readline = require('readline');
-      const simpleRl = readline.createInterface({ input: process.stdin, output: process.stdout });
-      simpleRl.once('line', (answer: string) => {
+      process.stdout.write(colors.dim("› "));
+      const readline = require("readline");
+      const simpleRl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
+      simpleRl.once("line", (answer: string) => {
         simpleRl.close();
         resolve(answer);
       });
       return;
     }
 
-    let inputBuffer = '';
+    let inputBuffer = "";
 
     // Escape sequence buffer for handling Shift+Tab
-    let escapeBuffer = '';
+    let escapeBuffer = "";
     let escapeTimeout: NodeJS.Timeout | null = null;
 
     // Track current display lines for proper redraw on mode switch
@@ -1503,14 +1628,14 @@ export function createFreeFormInput(
     }
 
     // Input line with gray caret
-    process.stdout.write(colors.dim('› '));
+    process.stdout.write(colors.dim("› "));
     // Draw bottom bar and mode footer below, then move cursor back to input line
     // Note: We don't use cursor save/restore because it can be unreliable when terminal scrolls
-    console.log();  // newline after input line
-    console.log(drawBar());  // bottom bar
-    console.log(getModeIndicator());  // mode indicator
+    console.log(); // newline after input line
+    console.log(drawBar()); // bottom bar
+    console.log(getModeIndicator()); // mode indicator
     // Move cursor up 3 lines (from after mode indicator to input line) and to column 3 (after "› ")
-    process.stdout.write('\x1B[3A\x1B[3G');
+    process.stdout.write("\x1B[3A\x1B[3G");
 
     // Calculate new display lines based on current mode
     const getNewTotalLines = () => {
@@ -1536,7 +1661,7 @@ export function createFreeFormInput(
 
       // Clear all lines (use max to handle mode changes)
       for (let i = 0; i < linesToClear; i++) {
-        process.stdout.write('\r\x1B[K\n');
+        process.stdout.write("\r\x1B[K\n");
       }
       process.stdout.write(`\x1B[${linesToClear}A`);
 
@@ -1554,12 +1679,12 @@ export function createFreeFormInput(
       }
 
       // Input line with gray caret
-      process.stdout.write(colors.dim('› ') + inputBuffer);
+      process.stdout.write(colors.dim("› ") + inputBuffer);
       // Draw bottom bar and mode footer below, then move cursor back to input line
       // Note: We don't use cursor save/restore because it can be unreliable when terminal scrolls
-      console.log();  // newline after input line
-      console.log(drawBar());  // bottom bar
-      console.log(getModeIndicator());  // mode indicator
+      console.log(); // newline after input line
+      console.log(drawBar()); // bottom bar
+      console.log(getModeIndicator()); // mode indicator
       // Move cursor up 3 lines (from after mode indicator to input line) and to correct column
       // Column is 3 (for "› ") plus inputBuffer length
       const cursorCol = 3 + inputBuffer.length;
@@ -1576,27 +1701,27 @@ export function createFreeFormInput(
     const cleanup = () => {
       process.stdin.pause(); // Stop receiving data during transition
       process.stdin.setRawMode(false);
-      process.stdin.removeListener('data', handleKeypress);
+      process.stdin.removeListener("data", handleKeypress);
       if (escapeTimeout) clearTimeout(escapeTimeout);
     };
 
     const processKey = (key: string) => {
       // Ctrl+C - exit
-      if (key === '\x03') {
+      if (key === "\x03") {
         cleanup();
-        console.log('\n');
+        console.log("\n");
         process.exit(0);
       }
 
       // Shift+Tab - cycle mode
-      if (key === '\x1b[Z') {
+      if (key === "\x1b[Z") {
         cycleMode();
         redraw();
         return;
       }
 
       // Enter - submit
-      if (key === '\r' || key === '\n') {
+      if (key === "\r" || key === "\n") {
         cleanup();
         // Clear the entire display before returning
         // Use tracked currentDisplayLines to handle mode changes correctly
@@ -1607,7 +1732,7 @@ export function createFreeFormInput(
         process.stdout.write(`\x1B[${linesToTop}A`);
         // Clear all display lines
         for (let i = 0; i < currentDisplayLines; i++) {
-          process.stdout.write('\r\x1B[K\n');
+          process.stdout.write("\r\x1B[K\n");
         }
         // Move back up to where display started
         process.stdout.write(`\x1B[${currentDisplayLines}A`);
@@ -1616,27 +1741,31 @@ export function createFreeFormInput(
       }
 
       // Backspace
-      if (key === '\x7f' || key === '\b') {
+      if (key === "\x7f" || key === "\b") {
         if (inputBuffer.length > 0) {
           inputBuffer = inputBuffer.slice(0, -1);
           // Simple redraw of input line
-          process.stdout.write('\r\x1B[K' + colors.dim('› ') + inputBuffer);
+          process.stdout.write("\r\x1B[K" + colors.dim("› ") + inputBuffer);
         }
         return;
       }
 
       // Ignore lone escape
-      if (key === '\x1b') {
+      if (key === "\x1b") {
         return;
       }
 
       // Ignore Tab (only Shift+Tab cycles mode)
-      if (key === '\t') {
+      if (key === "\t") {
         return;
       }
 
       // Regular character
-      if (key.length === 1 && key.charCodeAt(0) >= 32 && key.charCodeAt(0) < 127) {
+      if (
+        key.length === 1 &&
+        key.charCodeAt(0) >= 32 &&
+        key.charCodeAt(0) < 127
+      ) {
         inputBuffer += key;
         process.stdout.write(key);
       }
@@ -1651,14 +1780,14 @@ export function createFreeFormInput(
           if (escapeBuffer.length >= 3) {
             if (escapeTimeout) clearTimeout(escapeTimeout);
             processKey(escapeBuffer);
-            escapeBuffer = '';
+            escapeBuffer = "";
           }
-        } else if (char === '\x1b') {
+        } else if (char === "\x1b") {
           escapeBuffer = char;
           if (escapeTimeout) clearTimeout(escapeTimeout);
           escapeTimeout = setTimeout(() => {
-            if (escapeBuffer === '\x1b') processKey('\x1b');
-            escapeBuffer = '';
+            if (escapeBuffer === "\x1b") processKey("\x1b");
+            escapeBuffer = "";
           }, 50);
         } else {
           processKey(char);
@@ -1666,6 +1795,6 @@ export function createFreeFormInput(
       }
     };
 
-    process.stdin.on('data', handleKeypress);
+    process.stdin.on("data", handleKeypress);
   });
 }
