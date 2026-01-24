@@ -1,7 +1,7 @@
 import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 import * as path from "path";
-import { startLoading, stopLoading, updateLoadingStatus, displayInfo } from "./display.js";
+import { startLoading, stopLoading, updateLoadingStatus } from "./display.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -77,8 +77,7 @@ export async function checkAndAutoUpdate(): Promise<boolean> {
       execSync("npm run build", { cwd: projectRoot, stdio: "ignore", timeout: 60000 });
 
       stopLoading();
-      displayInfo("✓ Updated to latest version!");
-      displayInfo("Restarting...\n");
+      // Update complete - restart silently (no messages shown)
 
       return true; // Signal that restart is needed
     } catch (error: any) {

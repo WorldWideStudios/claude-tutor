@@ -348,24 +348,22 @@ export function createMultiQuestionWizard(
     };
 
     const redrawQuestion = () => {
-      // Use tracked display lines (what's actually on screen) for cursor movement
-      const linesToClear = currentDisplayedLines || getQuestionDisplayLines(currentQuestionIndex);
-
-      // Move up to top of display
-      process.stdout.write(`\x1B[${linesToClear}A`);
-      // Clear from cursor to end of screen (more reliable than line-by-line)
+      // Restore cursor to saved position (top of display)
+      process.stdout.write('\x1B[u');
+      // Clear from cursor to end of screen
       process.stdout.write('\x1B[J');
+      // Re-save the position for next redraw
+      process.stdout.write('\x1B[s');
       drawQuestion();
     };
 
     const redrawSummary = () => {
-      // Use tracked display lines for cursor movement
-      const linesToClear = currentDisplayedLines || getSummaryDisplayLines();
-
-      // Move up to top of display
-      process.stdout.write(`\x1B[${linesToClear}A`);
-      // Clear from cursor to end of screen (more reliable than line-by-line)
+      // Restore cursor to saved position (top of display)
+      process.stdout.write('\x1B[u');
+      // Clear from cursor to end of screen
       process.stdout.write('\x1B[J');
+      // Re-save the position for next redraw
+      process.stdout.write('\x1B[s');
       drawSummary();
     };
 
@@ -380,6 +378,8 @@ export function createMultiQuestionWizard(
       console.log();
     }
     process.stdout.write(`\x1B[${bufferLines}A`);
+    // Save cursor position at the drawing start point
+    process.stdout.write('\x1B[s');
 
     // Initial draw
     drawQuestion();
@@ -480,13 +480,10 @@ export function createMultiQuestionWizard(
               // Last question - show summary
               showingSummary = true;
               summarySelectedIndex = questions.length;
-              // Clear current display and draw summary
-              const linesToClear = currentDisplayedLines || getQuestionDisplayLines(currentQuestionIndex);
-              process.stdout.write(`\x1B[${linesToClear}A`);
-              for (let i = 0; i < linesToClear; i++) {
-                process.stdout.write('\r\x1B[K\n');
-              }
-              process.stdout.write(`\x1B[${linesToClear}A`);
+              // Restore cursor, clear, and draw summary
+              process.stdout.write('\x1B[u');
+              process.stdout.write('\x1B[J');
+              process.stdout.write('\x1B[s');
               drawSummary();
             }
           }
@@ -571,13 +568,10 @@ export function createMultiQuestionWizard(
           // Last question - show summary
           showingSummary = true;
           summarySelectedIndex = questions.length; // Default to Submit
-          // Use redrawQuestion to clear current display, then draw summary
-          const linesToClear = currentDisplayedLines || getQuestionDisplayLines(currentQuestionIndex);
-          process.stdout.write(`\x1B[${linesToClear}A`);
-          for (let i = 0; i < linesToClear; i++) {
-            process.stdout.write('\r\x1B[K\n');
-          }
-          process.stdout.write(`\x1B[${linesToClear}A`);
+          // Restore cursor, clear, and draw summary
+          process.stdout.write('\x1B[u');
+          process.stdout.write('\x1B[J');
+          process.stdout.write('\x1B[s');
           drawSummary();
         }
       }
@@ -1668,11 +1662,16 @@ function wrapCodeLine(code: string, maxWidth: number): string[] {
 }
 
 /**
- * Calculate total visual lines for a code block (accounting for wrapping)
+ * Calculate total visual lines for a code block (accounting for wrapping and comments)
  */
 function getWrappedLineCount(lines: CodeLine[], codeWidth: number): number {
   let total = 0;
   for (const line of lines) {
+    // Count comment line if present
+    if (line.comment) {
+      total += 1;
+    }
+    // Count code lines (may wrap)
     total += wrapCodeLine(line.code, codeWidth).length;
   }
   return total;
@@ -1709,17 +1708,25 @@ function initMultiLineCodeBlock(lines: CodeLine[], explanation?: string): void {
     }
   }
 
-  // Show all code lines (all tan initially) - wrapped to fit terminal
+  // Show all code lines with their comments - wrapped to fit terminal
   for (let i = 0; i < lines.length; i++) {
     const lineNum = String(i + 1).padStart(2, ' ');
+    const lineComment = lines[i].comment;
+
+    // Show comment above the code line (grayed out, indented)
+    if (lineComment) {
+      console.log(colors.dim(`  │ // ${lineComment}`));
+    }
+
     const wrappedLines = wrapCodeLine(lines[i].code, codeWidth);
 
     wrappedLines.forEach((wrappedLine, wIdx) => {
+      // All lines start gray; active line will be highlighted during redraw
       if (wIdx === 0) {
-        console.log(colors.dim(`${lineNum}│ `) + colors.tan(wrappedLine));
+        console.log(colors.dim(`${lineNum}│ `) + colors.dim(wrappedLine));
       } else {
         // Continuation lines: show "  │ " prefix for visual alignment
-        console.log(colors.dim(`  │ `) + colors.tan(wrappedLine));
+        console.log(colors.dim(`  │ `) + colors.dim(wrappedLine));
       }
     });
   }
@@ -1775,7 +1782,16 @@ function redrawMultiLineCodeBlock(
   // Redraw all code lines with progress coloring (wrapped to fit terminal)
   for (let i = 0; i < lines.length; i++) {
     const lineNum = String(i + 1).padStart(2, ' ');
+    const lineComment = lines[i].comment;
     const originalCode = lines[i].code;
+
+    // Redraw comment line if present
+    if (lineComment) {
+      process.stdout.write('\r\x1B[K');
+      process.stdout.write(colors.dim(`  │ // ${lineComment}`));
+      process.stdout.write('\x1B[1B'); // Move down
+    }
+
     const wrappedLines = wrapCodeLine(originalCode, codeWidth);
 
     wrappedLines.forEach((wrappedLine, wIdx) => {
@@ -1823,11 +1839,11 @@ function redrawMultiLineCodeBlock(
         }
         process.stdout.write(lineOutput);
       } else {
-        // Future line - show in tan
+        // Future line - show in gray (dim)
         if (wIdx === 0) {
-          process.stdout.write(colors.dim(`${lineNum}│ `) + colors.tan(wrappedLine));
+          process.stdout.write(colors.dim(`${lineNum}│ `) + colors.dim(wrappedLine));
         } else {
-          process.stdout.write(colors.dim(`  │ `) + colors.tan(wrappedLine));
+          process.stdout.write(colors.dim(`  │ `) + colors.dim(wrappedLine));
         }
       }
       process.stdout.write('\x1B[1B'); // Move down
@@ -1970,16 +1986,24 @@ function createMultiLineLineInput(
             correctCount--;
           }
           inputBuffer = inputBuffer.slice(0, -1);
-          redrawMultiLineCodeBlock(allLines, currentLineIndex, completedResults, inputBuffer, hasExplanation);
         }
+        // Always redraw to maintain display integrity (even when buffer is empty)
+        redrawMultiLineCodeBlock(allLines, currentLineIndex, completedResults, inputBuffer, hasExplanation);
         return;
       }
 
       // Ignore lone escape
       if (key === '\x1b') return;
 
-      // Ignore Tab
-      if (key === '\t') return;
+      // Tab inserts indent (2 spaces)
+      if (key === '\t') {
+        inputBuffer += '  ';
+        if (isBlockMode()) {
+          correctCount = inputBuffer.length;
+        }
+        redrawMultiLineCodeBlock(allLines, currentLineIndex, completedResults, inputBuffer, hasExplanation);
+        return;
+      }
 
       // Regular character
       if (key.length === 1 && key >= ' ') {

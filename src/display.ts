@@ -13,7 +13,7 @@ const noColor = process.env.NO_COLOR !== undefined ||
                 !process.stdout.isTTY;
 
 // Color palette
-const colors = {
+export const colors = {
   primary: noColor ? chalk.reset : chalk.hex('#10B981'),
   primaryDim: noColor ? chalk.reset : chalk.hex('#059669'),
   success: noColor ? chalk.reset : chalk.green,
@@ -28,7 +28,7 @@ const colors = {
 };
 
 // Symbols
-const symbols = {
+export const symbols = {
   success: '✓',
   error: '✗',
   arrow: '›',
@@ -699,60 +699,89 @@ function getDisplayLineCount(text: string): number {
 
 /**
  * Display question prompt for setup with full-width lines
- * Entry box with green caret and bottom bar
+ * Question text appears above the entry box (not inside it)
+ * Entry box contains just the caret with top and bottom bars
  */
 export function displayQuestionPrompt(question: string): void {
   // Strip any HTML tags from the question
   const cleanQuestion = stripHtmlTags(question);
 
-  // Calculate total lines: top bar (1) + question text lines + input (1) + bottom bar (1)
+  // Calculate total lines: question text lines + top bar (1) + input (1) + bottom bar (1)
   const questionLineCount = getDisplayLineCount(cleanQuestion);
-  questionPromptLines = 1 + questionLineCount + 1 + 1; // top bar + question + input + bottom bar
+  questionPromptLines = questionLineCount + 1 + 1 + 1; // question + top bar + input + bottom bar
 
   // Ensure we start on a fresh line
   process.stdout.write('\n');
 
-  // Draw each element directly (no buffer lines needed - we're after displayWelcome which cleared screen)
+  // Draw question text OUTSIDE the entry box (tutor's message)
+  process.stdout.write('\r\x1B[K' + colors.text(cleanQuestion) + '\n\n');
+
+  // Draw entry box: top bar, caret, bottom bar
   // Top bar
   process.stdout.write('\r\x1B[K' + drawBar() + '\n');
-  // Question text
-  process.stdout.write('\r\x1B[K' + colors.text(cleanQuestion) + '\n');
   // Input line with green caret
   process.stdout.write('\r\x1B[K' + colors.primary(symbols.arrow + ' '));
-  // Save cursor position here (on the input line, after caret)
-  const cursorCol = 3; // "› " is 2 chars + 1 for position
+  // Save cursor column (after "› ")
+  process.stdout.write('\x1B[s'); // Save cursor position
   process.stdout.write('\n');
   // Bottom bar
-  process.stdout.write('\r\x1B[K' + drawBar() + '\n');
-
-  // Move cursor back up to input line (from after bottom bar to input line)
-  // We're 2 lines below the input line (bottom bar + newline after it)
-  process.stdout.write('\x1B[2A\x1B[' + cursorCol + 'G');
+  process.stdout.write('\r\x1B[K' + drawBar());
+  // Restore cursor to input line
+  process.stdout.write('\x1B[u'); // Restore cursor position
 
   // Show cursor for typing (needed for raw mode input)
   process.stdout.write('\x1B[?25h');
 }
 
 /**
+ * Redraw the bottom bar below the current cursor position
+ * Called after each keystroke to keep bar below wrapped text
+ */
+export function redrawQuestionBottomBar(): void {
+  if (!process.stdout.isTTY) return;
+
+  // Save current cursor position
+  process.stdout.write('\x1B[s');
+  // Move to next line and draw bottom bar
+  process.stdout.write('\n\r\x1B[K' + drawBar());
+  // Restore cursor position
+  process.stdout.write('\x1B[u');
+}
+
+/**
  * Close the question prompt after user enters their answer
  * Clears the entry box and shows the Q&A in the log
+ *
+ * Layout when called (question is OUTSIDE entry box):
+ *   Question text (questionLineCount lines)
+ *   (blank line)
+ *   ─────────── (top bar)
+ *   › user input (inputLineCount lines, cursor on last line)
+ *   ─────────── (bottom bar)
  */
 export function closeQuestionPrompt(question: string, answer: string): void {
   if (!process.stdout.isTTY) return;
 
   // Strip any HTML tags from the question
   const cleanQuestion = stripHtmlTags(question);
+  const questionLineCount = getDisplayLineCount(cleanQuestion);
 
-  // Cursor is on the input line (line 2 of the 4-line display: top bar, question, input, bottom bar)
-  // Move up to the top bar (2 lines up from input line)
-  const linesAboveInput = 2; // top bar + question
-  process.stdout.write(`\x1B[${linesAboveInput}A`);
+  // Calculate how many lines the input occupied (with wrapping)
+  const termWidth = process.stdout.columns || 80;
+  const inputWidth = termWidth - 2; // "› " is 2 chars
+  const inputLineCount = answer.length === 0 ? 1 : Math.ceil(answer.length / inputWidth);
+
+  // Cursor is on the last input line. Move up to start of question:
+  // (inputLineCount - 1) to first input line + 1 for top bar + 1 for blank line + questionLineCount
+  const linesToMoveUp = (inputLineCount - 1) + 1 + 1 + questionLineCount;
+  if (linesToMoveUp > 0) {
+    process.stdout.write(`\x1B[${linesToMoveUp}A`);
+  }
 
   // Clear from cursor to end of screen
-  process.stdout.write('\x1B[J');
+  process.stdout.write('\r\x1B[J');
 
   // Redraw as clean log entry (condensed - no bars)
-  const termWidth = process.stdout.columns || 80;
   const prefix = symbols.arrow + ' ';
   const prefixLen = 2; // "› " is 2 chars
 

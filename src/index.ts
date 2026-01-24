@@ -1,19 +1,37 @@
 #!/usr/bin/env node
 
-import { config } from "dotenv";
 import { fileURLToPath } from "url";
 import * as path from "path";
+import * as fs from "fs";
 import { logInteraction } from "./logging.js";
 
-// Load .env from the package directory
+// Load .env manually (completely silent, no dotenv package)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-config({ path: path.resolve(__dirname, "..", ".env") });
+const envPath = path.resolve(__dirname, "..", ".env");
+if (fs.existsSync(envPath)) {
+  const envContent = fs.readFileSync(envPath, "utf-8");
+  for (const line of envContent.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith("#")) {
+      const eqIndex = trimmed.indexOf("=");
+      if (eqIndex > 0) {
+        const key = trimmed.slice(0, eqIndex).trim();
+        let value = trimmed.slice(eqIndex + 1).trim();
+        // Remove surrounding quotes if present
+        if ((value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'"))) {
+          value = value.slice(1, -1);
+        }
+        process.env[key] = value;
+      }
+    }
+  }
+}
 
 import { Command } from "commander";
 import * as readline from "readline";
 import { execSync } from "child_process";
-import * as fs from "fs";
 import { runPreflightChecks, createProjectDirectory } from "./preflight.js";
 import { initGitRepo } from "./git.js";
 import {
@@ -54,12 +72,6 @@ import {
   hasMoreGoldenSteps,
 } from "./golden-code.js";
 import chalk from "chalk";
-
-// Colors for mode-based display
-const colors = {
-  dim: chalk.gray,
-  primary: chalk.hex("#10B981"),
-};
 import {
   displayWelcome,
   displaySegmentHeader,
@@ -75,6 +87,7 @@ import {
   displayUserMessage,
   displayQuestionPrompt,
   closeQuestionPrompt,
+  redrawQuestionBottomBar,
   displayCommand,
   displayCommandOutput,
   displayContinuationPrompt,
@@ -91,6 +104,9 @@ import {
   updateLoadingStatus,
   isLoadingActive,
   newLine,
+  colors,
+  symbols,
+  drawBar,
 } from "./display.js";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
 import type {
@@ -284,6 +300,7 @@ async function startCommand(projectDir: string | undefined): Promise<void> {
           displayQuestionPrompt("Continue this project? (y/n)");
           rl.once("line", resolve);
         });
+        closeQuestionPrompt("Continue this project? (y/n)", answer);
 
         if (
           answer.toLowerCase() === "y" ||
@@ -341,6 +358,7 @@ async function startCommand(projectDir: string | undefined): Promise<void> {
         displayQuestionPrompt("Continue this project? (y/n)");
         rl.once("line", resolve);
       });
+      closeQuestionPrompt("Continue this project? (y/n)", answer);
 
       if (
         answer.toLowerCase() === "y" ||
@@ -370,6 +388,54 @@ async function startCommand(projectDir: string | undefined): Promise<void> {
       process.stdin.resume();
 
       let inputBuffer = '';
+      const termWidth = process.stdout.columns || 80;
+      const prefixLen = 2; // "› " is 2 chars
+      const inputWidth = termWidth - prefixLen;
+
+      // Calculate how many visual lines the input takes
+      const getInputLineCount = (text: string): number => {
+        if (text.length === 0) return 1;
+        return Math.ceil(text.length / inputWidth);
+      };
+
+      // Redraw the entire input area (handles wrapping properly)
+      const redrawInput = () => {
+        const lineCount = getInputLineCount(inputBuffer);
+
+        // Move to start of input area (line with "› ")
+        // Move up by current line count to get back to the first line
+        if (lineCount > 1) {
+          process.stdout.write(`\x1B[${lineCount - 1}A`);
+        }
+        process.stdout.write('\r');
+
+        // Clear from cursor to end of screen (removes old input and bottom bar)
+        process.stdout.write('\x1B[J');
+
+        // Draw input with proper wrapping
+        const lines: string[] = [];
+        for (let i = 0; i < inputBuffer.length; i += inputWidth) {
+          lines.push(inputBuffer.slice(i, i + inputWidth));
+        }
+        if (lines.length === 0) lines.push('');
+
+        lines.forEach((line, idx) => {
+          if (idx === 0) {
+            process.stdout.write(colors.primary(symbols.arrow + ' ') + line);
+          } else {
+            process.stdout.write('\n  ' + line);
+          }
+        });
+
+        // Draw bottom bar on new line
+        process.stdout.write('\n' + drawBar());
+
+        // Move cursor back to end of input
+        process.stdout.write('\x1B[1A'); // Move up to input line
+        const lastLineLen = lines[lines.length - 1].length;
+        const cursorCol = (lines.length === 1 ? prefixLen : 2) + lastLineLen + 1;
+        process.stdout.write(`\r\x1B[${cursorCol}C`);
+      };
 
       const handleInput = (chunk: Buffer) => {
         const char = chunk.toString();
@@ -391,8 +457,7 @@ async function startCommand(projectDir: string | undefined): Promise<void> {
         if (char === '\x7f' || char === '\b') { // Backspace
           if (inputBuffer.length > 0) {
             inputBuffer = inputBuffer.slice(0, -1);
-            // Move cursor back, clear, stay there
-            process.stdout.write('\b \b');
+            redrawInput();
           }
           return;
         }
@@ -400,7 +465,7 @@ async function startCommand(projectDir: string | undefined): Promise<void> {
         // Regular character
         if (char.length === 1 && char >= ' ' && char <= '~') {
           inputBuffer += char;
-          process.stdout.write(char);
+          redrawInput();
         }
       };
 

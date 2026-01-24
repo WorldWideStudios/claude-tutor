@@ -43,21 +43,34 @@ export function parseGoldenCode(goldenCode: string): ParsedGoldenCode {
       const delimiter = heredocMatch[2];
       const heredocLines: CodeLine[] = [];
       const startLine = i;
+
+      // Include the opening cat command as first line
+      heredocLines.push({
+        comment: `opens ${filename} for writing until ${delimiter}`,
+        code: line
+      });
       i++;
 
       // Collect lines until delimiter
       while (i < lines.length && lines[i].trim() !== delimiter) {
+        const lineComment = generateCodeComment(lines[i]);
         heredocLines.push({
-          comment: heredocLines.length === 0 ? `creates ${filename}` : '',
+          comment: lineComment || '',
           code: lines[i]
         });
         i++;
       }
-      i++; // Skip delimiter
+
+      // Include the closing delimiter
+      heredocLines.push({
+        comment: 'closes the file',
+        code: delimiter
+      });
+      i++; // Move past delimiter
 
       steps.push({
         type: 'heredoc',
-        code: `cat > ${filename} << '${delimiter}'\n${heredocLines.map(l => l.code).join('\n')}\n${delimiter}`,
+        code: heredocLines.map(l => l.code).join('\n'),
         comment: `creates ${filename}`,
         lines: heredocLines,
         lineNumber: startLine
@@ -98,7 +111,7 @@ export function parseGoldenCode(goldenCode: string): ParsedGoldenCode {
 
       const lineComment = generateCodeComment(currentLine);
       codeBlockLines.push({
-        comment: codeBlockLines.length === 0 && lineComment ? lineComment : '',
+        comment: lineComment,  // Every line gets its own comment
         code: currentLine
       });
       i++;
