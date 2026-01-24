@@ -386,18 +386,19 @@ export function createMultiQuestionWizard(
     // Hide cursor during selection
     process.stdout.write('\x1B[?25l');
 
+    // Add buffer lines BEFORE drawing to prevent terminal scroll issues
+    // This ensures the terminal has room for the display and won't scroll
+    const initialLines = getQuestionDisplayLines(currentQuestionIndex);
+    const bufferLines = initialLines + 5;
+    for (let i = 0; i < bufferLines; i++) {
+      console.log();
+    }
+    process.stdout.write(`\x1B[${bufferLines}A`);
+
     // Initial draw
     drawQuestion();
     // Initialize tracked display lines after first draw
     currentDisplayedLines = getQuestionDisplayLines(currentQuestionIndex);
-
-    // Clear several extra lines below to remove any old terminal content
-    // that might have been on screen before the wizard was drawn
-    for (let i = 0; i < 5; i++) {
-      process.stdout.write('\r\x1B[K\n');
-    }
-    // Move cursor back to just below the bar
-    process.stdout.write('\x1B[5A');
 
     // Enable raw mode for direct character input
     // Note: We don't use rl.pause()/resume() because readline's internal listener

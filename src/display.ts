@@ -705,6 +705,17 @@ export function displayQuestionPrompt(question: string): void {
   // Strip any HTML tags from the question
   const cleanQuestion = stripHtmlTags(question);
 
+  // Calculate total lines: top bar (1) + question text lines + input (1) + bottom bar (1)
+  const questionLineCount = getDisplayLineCount(cleanQuestion);
+  questionPromptLines = 1 + questionLineCount + 1 + 1; // top bar + question + input + bottom bar
+
+  // Add buffer lines BEFORE drawing to prevent terminal scroll issues
+  const bufferLines = questionPromptLines + 3;
+  for (let i = 0; i < bufferLines; i++) {
+    console.log();
+  }
+  process.stdout.write(`\x1B[${bufferLines}A`);
+
   // Top bar
   console.log(drawBar());
   // Question text
@@ -717,10 +728,6 @@ export function displayQuestionPrompt(question: string): void {
   // Move cursor back up to input line (from after bottom bar to input line)
   // Position cursor after the green caret
   process.stdout.write('\x1B[2A\x1B[3G');
-
-  // Calculate total lines: top bar (1) + question text lines + input (1) + bottom bar (1)
-  const questionLines = getDisplayLineCount(cleanQuestion);
-  questionPromptLines = 1 + questionLines + 1 + 1; // top bar + question + input + bottom bar
 }
 
 /**
