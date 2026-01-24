@@ -561,6 +561,15 @@ export function createMultiQuestionWizard(
           process.stdout.write(`\x1B[${newLines}A`);
           drawQuestion();
         }
+      } else if (key.length === 1 && key >= ' ' && key <= '~') {
+        // Regular printable character in selection mode
+        // Auto-activate "Other" option and start typing
+        const otherIdx = opts.length - 1; // "Other" is always last
+        selectedIndices[currentQuestionIndex] = otherIdx;
+        customInputMode = true;
+        customInputValue = key; // Start with the typed character
+        redrawQuestion();
+        return;
       } else if (key === '\r' || key === '\n') {
         // Enter - confirm selection
         const selectedOpt = opts[selectedIndices[currentQuestionIndex]];
