@@ -101,6 +101,7 @@ import type {
 } from "./types.js";
 import { askClarifyingQuestions, type QuestionContext } from "./questions.js";
 import { loginCommand } from "./auth.js";
+import { checkAndAutoUpdate, restartProcess } from "./update.js";
 
 // Shell commands that should be executed directly
 const SHELL_COMMANDS = [
@@ -189,6 +190,13 @@ program
   )
   .option("-t, --token <apiKey>", "API token for authentication")
   .action(async (options) => {
+    // Check for updates and auto-update if available
+    const needsRestart = await checkAndAutoUpdate();
+    if (needsRestart) {
+      restartProcess();
+      return;
+    }
+
     // Handle token authentication
     if (options.token) {
       try {
@@ -209,6 +217,13 @@ program
   .description("Resume the current tutoring project")
   .option("-d, --dir <directory>", "Project directory to resume")
   .action(async (options) => {
+    // Check for updates and auto-update if available
+    const needsRestart = await checkAndAutoUpdate();
+    if (needsRestart) {
+      restartProcess();
+      return;
+    }
+
     await resumeCommand(options.dir);
   });
 
