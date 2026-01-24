@@ -433,7 +433,7 @@ async function startCommand(projectDir: string | undefined): Promise<void> {
         // Move cursor back to end of input
         process.stdout.write('\x1B[1A'); // Move up to input line
         const lastLineLen = lines[lines.length - 1].length;
-        const cursorCol = (lines.length === 1 ? prefixLen : 2) + lastLineLen + 1;
+        const cursorCol = (lines.length === 1 ? prefixLen : 2) + lastLineLen;
         process.stdout.write(`\r\x1B[${cursorCol}C`);
       };
 
@@ -792,6 +792,14 @@ async function runTutorLoop(
           return results[0].slice("__QUESTION__:".length);
         }
 
+        // Advance to next golden step after successful multi-line input
+        if (segment && segment.goldenCode && hasMoreGoldenSteps(segment.goldenCode, currentGoldenStepIndex)) {
+          currentGoldenStepIndex++;
+          await updateProgress(curriculum.workingDirectory, {
+            currentGoldenStep: currentGoldenStepIndex,
+          });
+        }
+
         // Return all lines joined for command execution
         return results.join("\n");
       } else {
@@ -803,6 +811,15 @@ async function runTutorLoop(
         );
         // Clear expected code after Typer Shark input (user typed something)
         currentExpectedCode = null;
+
+        // Advance to next golden step after successful single-line input
+        if (segment && segment.goldenCode && hasMoreGoldenSteps(segment.goldenCode, currentGoldenStepIndex)) {
+          currentGoldenStepIndex++;
+          await updateProgress(curriculum.workingDirectory, {
+            currentGoldenStep: currentGoldenStepIndex,
+          });
+        }
+
         return result;
       }
     } else if (heredocState.active) {
@@ -910,19 +927,9 @@ async function runTutorLoop(
           if (!loadingStopped) stopLoading();
           setAgentRunning(false);
           messages = result.messages;
-          // Advance to next golden step after heredoc completion (user typed code)
-          if (
-            segment &&
-            segment.goldenCode &&
-            hasMoreGoldenSteps(segment.goldenCode, currentGoldenStepIndex)
-          ) {
-            currentGoldenStepIndex++;
-            await updateProgress(curriculum.workingDirectory, {
-              currentGoldenStep: currentGoldenStepIndex,
-            });
-          }
-          // Load next step from plan
-          if (segment && segment.goldenCode) {
+          // Note: Step advancement now happens in Typer Shark completion
+          // Load next step from plan (if not already loaded)
+          if (segment && segment.goldenCode && !currentExpectedCode) {
             currentExpectedCode = goldenCodeToExtractedCode(
               segment.goldenCode,
               currentGoldenStepIndex,
@@ -1103,19 +1110,9 @@ async function runTutorLoop(
       setAgentRunning(false);
 
       messages = result.messages;
-      // Advance to next golden step after successful command execution
-      if (
-        segment &&
-        segment.goldenCode &&
-        hasMoreGoldenSteps(segment.goldenCode, currentGoldenStepIndex)
-      ) {
-        currentGoldenStepIndex++;
-        await updateProgress(curriculum.workingDirectory, {
-          currentGoldenStep: currentGoldenStepIndex,
-        });
-      }
-      // Load next step from plan
-      if (isTutorMode() && segment && segment.goldenCode) {
+      // Note: Step advancement now happens in Typer Shark completion
+      // Load next step from plan (if not already loaded)
+      if (isTutorMode() && segment && segment.goldenCode && !currentExpectedCode) {
         currentExpectedCode = goldenCodeToExtractedCode(
           segment.goldenCode,
           currentGoldenStepIndex,
