@@ -114,12 +114,7 @@ export function createMultiQuestionWizard(
       return [...questions[qIdx].options, { label: 'Other (type your own)', value: '__OTHER__', description: '' }];
     };
 
-    // Track which questions are in custom input mode
-    const customInputMode: boolean[] = questions.map(() => false);
-    const customInputValues: string[] = questions.map(() => '');
-
     // Track the actual number of lines currently displayed on screen
-    // This is crucial for cursor positioning after mode changes (e.g., entering custom input mode)
     let currentDisplayedLines = 0;
 
     // Calculate lines for a question display
@@ -129,22 +124,11 @@ export function createMultiQuestionWizard(
       let total = 1; // top bar
       total += 1; // progress line
       total += wordWrap(q.question, termWidth - 1).length;
-      opts.forEach((opt, i) => {
-        const num = `${i + 1}.`;
+      opts.forEach((opt) => {
+        const num = `${opts.indexOf(opt) + 1}.`;
         const prefix = `  ${num} `;
-
-        // For "Other" option in custom input mode, use actual displayed text
-        const isOtherOption = opt.value === '__OTHER__';
-        const inCustomMode = customInputMode[qIdx];
-
-        let displayLabel = opt.label;
-        if (isOtherOption && inCustomMode) {
-          const typedValue = customInputValues[qIdx];
-          displayLabel = typedValue ? `Other: ${typedValue}█` : 'Other: █';
-        }
-
-        const desc = (!isOtherOption || !inCustomMode) && opt.description ? ` - ${opt.description}` : '';
-        const fullLine = prefix + displayLabel + desc;
+        const desc = opt.description ? ` - ${opt.description}` : '';
+        const fullLine = prefix + opt.label + desc;
         total += wordWrap(fullLine, termWidth - 1, '       ').length;
       });
       total += 1; // navigation hint
@@ -200,48 +184,27 @@ export function createMultiQuestionWizard(
       opts.forEach((opt, i) => {
         const num = `${i + 1}.`;
         const prefix = i === selectedIdx ? `› ${num} ` : `  ${num} `;
-
-        // For "Other" option in custom input mode, show the typed value
-        const isOtherOption = opt.value === '__OTHER__';
-        const inCustomMode = customInputMode[currentQuestionIndex];
-
-        let displayLabel = opt.label;
-        let typedValue = '';
-        if (isOtherOption && inCustomMode) {
-          // Replace "Other (type your own)" with actual typed value
-          typedValue = customInputValues[currentQuestionIndex];
-          displayLabel = typedValue ? `Other: ${typedValue}█` : 'Other: █';
-        }
-
-        const desc = (!isOtherOption || !inCustomMode) && opt.description ? ` - ${opt.description}` : '';
-        const fullText = prefix + displayLabel + desc;
+        const desc = opt.description ? ` - ${opt.description}` : '';
+        const fullText = prefix + opt.label + desc;
         const wrappedLines = wordWrap(fullText, termWidth - 1, '       ');
 
         wrappedLines.forEach((line, lineIdx) => {
           process.stdout.write('\r\x1B[K');
           if (lineIdx === 0) {
-            // Special handling for "Other" in custom input mode: only "Other:" is green
-            if (isOtherOption && inCustomMode && i === selectedIdx) {
-              const greenPart = prefix + 'Other: ';
-              const whitePart = typedValue + '█';
-              process.stdout.write(colors.primary(greenPart));
-              process.stdout.write(chalk.white(whitePart));
-            } else {
-              const prefixAndLabel = prefix + displayLabel;
-              if (i === selectedIdx) {
-                if (line.length <= prefixAndLabel.length) {
-                  process.stdout.write(colors.primary(line));
-                } else {
-                  process.stdout.write(colors.primary(prefixAndLabel));
-                  process.stdout.write(chalk.white(line.slice(prefixAndLabel.length)));
-                }
+            const prefixAndLabel = prefix + opt.label;
+            if (i === selectedIdx) {
+              if (line.length <= prefixAndLabel.length) {
+                process.stdout.write(colors.primary(line));
               } else {
-                if (line.length <= prefixAndLabel.length) {
-                  process.stdout.write(colors.dim(line));
-                } else {
-                  process.stdout.write(colors.dim(prefixAndLabel));
-                  process.stdout.write(chalk.white(line.slice(prefixAndLabel.length)));
-                }
+                process.stdout.write(colors.primary(prefixAndLabel));
+                process.stdout.write(chalk.white(line.slice(prefixAndLabel.length)));
+              }
+            } else {
+              if (line.length <= prefixAndLabel.length) {
+                process.stdout.write(colors.dim(line));
+              } else {
+                process.stdout.write(colors.dim(prefixAndLabel));
+                process.stdout.write(chalk.white(line.slice(prefixAndLabel.length)));
               }
             }
           } else {
@@ -254,10 +217,7 @@ export function createMultiQuestionWizard(
       // Navigation hint
       process.stdout.write('\r\x1B[K');
       let navHint: string;
-      if (customInputMode[currentQuestionIndex]) {
-        // In custom input mode - show typing instructions
-        navHint = 'Type your answer • Enter submit • Esc cancel';
-      } else if (currentQuestionIndex === 0) {
+      if (currentQuestionIndex === 0) {
         navHint = '↑↓ select • Enter confirm • → next';
       } else if (currentQuestionIndex === questions.length - 1) {
         navHint = '↑↓ select • Enter confirm • ← back';
@@ -272,14 +232,6 @@ export function createMultiQuestionWizard(
 
       // Update the tracked display line count after drawing
       currentDisplayedLines = getQuestionDisplayLines(currentQuestionIndex);
-    };
-
-    // Redraw custom input inline on the "Other" option line
-    // This keeps the same display structure but updates the "Other" line with typed text
-    const redrawCustomInputInline = () => {
-      // The display structure is the same as drawQuestion, just redraw it
-      // with the custom input value shown on the "Other" option line
-      redrawQuestion();
     };
 
     const drawSummary = (clearFirst: boolean = false) => {
@@ -460,66 +412,7 @@ export function createMultiQuestionWizard(
         return;
       }
 
-      // Check if in custom input mode for this question
-      if (customInputMode[currentQuestionIndex]) {
-        // Custom input mode key handling - text appears inline on "Other" option
-        if (key === '\r' || key === '\n') {
-          // Submit custom input
-          const customValue = customInputValues[currentQuestionIndex].trim();
-          if (customValue) {
-            // IMPORTANT: Calculate prevLines BEFORE changing customInputMode
-            // because line count depends on custom mode state
-            const prevLines = getQuestionDisplayLines(currentQuestionIndex);
-
-            answers[currentQuestionIndex] = customValue;
-            customInputMode[currentQuestionIndex] = false;
-
-            if (currentQuestionIndex < questions.length - 1) {
-              // Move to next question
-              currentQuestionIndex++;
-              const newLines = getQuestionDisplayLines(currentQuestionIndex);
-              const linesToClear = Math.max(prevLines, newLines) + 2;
-              process.stdout.write(`\x1B[${linesToClear}A`);
-              for (let i = 0; i < linesToClear; i++) {
-                process.stdout.write('\r\x1B[K\n');
-              }
-              process.stdout.write(`\x1B[${newLines}A`);
-              drawQuestion();
-            } else {
-              // Last question - show summary
-              const summaryLines = getSummaryDisplayLines();
-              const linesToClear = Math.max(prevLines, summaryLines) + 2;
-              process.stdout.write(`\x1B[${linesToClear}A`);
-              for (let i = 0; i < linesToClear; i++) {
-                process.stdout.write('\r\x1B[K\n');
-              }
-              process.stdout.write(`\x1B[${summaryLines}A`);
-              showingSummary = true;
-              summarySelectedIndex = questions.length;
-              drawSummary();
-            }
-          }
-          return;
-        }
-        if (key === '\x7f' || key === '\b') {
-          // Backspace
-          customInputValues[currentQuestionIndex] = customInputValues[currentQuestionIndex].slice(0, -1);
-          redrawCustomInputInline();
-          return;
-        }
-        if (key === '\x1b') {
-          // Escape - go back to selection mode (clear typed value)
-          customInputMode[currentQuestionIndex] = false;
-          customInputValues[currentQuestionIndex] = '';
-          redrawQuestion();
-          return;
-        }
-        if (key.length === 1 && key >= ' ') {
-          customInputValues[currentQuestionIndex] += key;
-          redrawCustomInputInline();
-        }
-        return;
-      }
+      // Custom input mode is no longer used inline - "Other" now shows a separate prompt
 
       // Question mode (selection)
       const q = questions[currentQuestionIndex];
@@ -569,13 +462,64 @@ export function createMultiQuestionWizard(
         // Enter - confirm selection
         const selectedOpt = opts[selectedIndices[currentQuestionIndex]];
 
-        // Check if "Other" option selected
+        // Check if "Other" option selected - use simple prompt approach
         if (selectedOpt.value === '__OTHER__') {
-          // Enter custom input mode - redrawQuestion() will use tracked lines
-          // to properly handle the mode change (line count changes)
-          customInputMode[currentQuestionIndex] = true;
-          customInputValues[currentQuestionIndex] = '';
-          redrawQuestion();
+          // Clear the wizard display
+          const prevLines = getQuestionDisplayLines(currentQuestionIndex);
+          process.stdout.write(`\x1B[${prevLines}A`);
+          for (let i = 0; i < prevLines; i++) {
+            process.stdout.write('\r\x1B[K\n');
+          }
+          process.stdout.write(`\x1B[${prevLines}A`);
+
+          // Exit raw mode to use normal readline
+          process.stdin.setRawMode(false);
+          process.stdin.removeListener('data', handleKeypress);
+          process.stdout.write('\x1B[?25h'); // Show cursor
+
+          // Show simple prompt for custom input
+          console.log(drawBar());
+          console.log(colors.primary(`  ${questions[currentQuestionIndex].question}`));
+          console.log(colors.dim('  Type your answer:'));
+          process.stdout.write(colors.dim('  › '));
+
+          // Use readline to get input (simple and reliable)
+          rl.once('line', (customValue: string) => {
+            const trimmedValue = customValue.trim();
+
+            // Clear the prompt display
+            process.stdout.write('\x1B[4A'); // Move up 4 lines
+            for (let i = 0; i < 4; i++) {
+              process.stdout.write('\r\x1B[K\n');
+            }
+            process.stdout.write('\x1B[4A');
+
+            if (trimmedValue) {
+              answers[currentQuestionIndex] = trimmedValue;
+            }
+
+            // Re-enable raw mode and continue
+            process.stdin.setRawMode(true);
+            process.stdin.on('data', handleKeypress);
+            process.stdout.write('\x1B[?25l'); // Hide cursor
+
+            if (trimmedValue && currentQuestionIndex < questions.length - 1) {
+              // Move to next question
+              currentQuestionIndex++;
+              currentDisplayedLines = 0; // Reset tracking
+              drawQuestion();
+            } else if (trimmedValue) {
+              // Last question - show summary
+              showingSummary = true;
+              summarySelectedIndex = questions.length;
+              currentDisplayedLines = 0; // Reset tracking
+              drawSummary();
+            } else {
+              // No input - redraw current question
+              currentDisplayedLines = 0; // Reset tracking
+              drawQuestion();
+            }
+          });
           return;
         }
 
