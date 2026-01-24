@@ -2,6 +2,16 @@ import { v4 as uuid } from 'uuid';
 import Anthropic from '@anthropic-ai/sdk';
 import type { Curriculum, Segment, BuildSegment, RefactorSegment, LearnerProfile } from './types.js';
 
+/**
+ * Strip emojis and other problematic Unicode characters from code
+ * Terminal rendering of emojis is inconsistent and can break character counting
+ */
+function stripEmojis(text: string): string {
+  // Remove emoji and other symbols that cause terminal display issues
+  // This regex matches most emoji, including multi-codepoint ones
+  return text.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F000}-\u{1F02F}]|[\u{1F0A0}-\u{1F0FF}]|[\u{1F100}-\u{1F1FF}]|[\u{1F200}-\u{1F2FF}]|[\u{200D}\u{FE0F}]/gu, '');
+}
+
 // Lazy-initialize client
 let client: Anthropic | null = null;
 function getClient(): Anthropic {
@@ -203,7 +213,7 @@ Generate segments that specifically build this project, not generic exercises. E
       if (seg.type === 'build') {
         return createBuildSegment({
           title: seg.title,
-          goldenCode: seg.goldenCode,
+          goldenCode: stripEmojis(seg.goldenCode),  // Strip emojis for terminal compatibility
           targetFile: seg.targetFile,
           explanation: seg.explanation,
           engineeringFocus: seg.engineeringFocus,
@@ -216,8 +226,8 @@ Generate segments that specifically build this project, not generic exercises. E
       } else {
         return createRefactorSegment({
           title: seg.title,
-          startingCode: seg.startingCode,
-          goldenCode: seg.goldenCode,
+          startingCode: stripEmojis(seg.startingCode),  // Strip emojis for terminal compatibility
+          goldenCode: stripEmojis(seg.goldenCode),  // Strip emojis for terminal compatibility
           targetFile: seg.targetFile,
           problem: seg.problem,
           lesson: seg.lesson,

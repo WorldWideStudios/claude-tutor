@@ -1599,7 +1599,7 @@ export async function createMultiLineTyperSharkInput(
     if (expectedCode.trim() === '') {
       results.push('');
       // Redraw with this line completed
-      redrawMultiLineCodeBlock(filteredLines, i + 1, results, '');
+      redrawMultiLineCodeBlock(filteredLines, i + 1, results, '', !!explanation);
       continue;
     }
 
@@ -1609,7 +1609,8 @@ export async function createMultiLineTyperSharkInput(
       filteredLines,
       i,
       results,
-      expectedCode
+      expectedCode,
+      !!explanation
     );
 
     // Check if user asked a question
@@ -1751,7 +1752,8 @@ function redrawMultiLineCodeBlock(
   lines: CodeLine[],
   completedCount: number,
   completedResults: string[],
-  currentInput: string
+  currentInput: string,
+  hasExplanation: boolean = false
 ): void {
   if (!process.stdout.isTTY) return;
 
@@ -1759,10 +1761,16 @@ function redrawMultiLineCodeBlock(
 
   // Calculate total visual lines above cursor (accounting for wrapping)
   const wrappedTotal = getWrappedLineCount(lines, codeWidth);
-  const linesAbove = wrappedTotal + 1; // wrapped code lines + separator
+  // Lines above cursor: explanation (if any) + wrapped code lines + separator
+  const linesAbove = (hasExplanation ? 1 : 0) + wrappedTotal + 1;
 
   // Move to top of code block
   process.stdout.write(`\x1B[${linesAbove}A`);
+
+  // Skip over explanation line if present (we don't redraw it)
+  if (hasExplanation) {
+    process.stdout.write('\x1B[1B');
+  }
 
   // Redraw all code lines with progress coloring (wrapped to fit terminal)
   for (let i = 0; i < lines.length; i++) {
@@ -1889,7 +1897,8 @@ function createMultiLineLineInput(
   allLines: CodeLine[],
   currentLineIndex: number,
   completedResults: string[],
-  expectedText: string
+  expectedText: string,
+  hasExplanation: boolean = false
 ): Promise<string> {
   return new Promise((resolve) => {
     if (!process.stdin.isTTY) {
@@ -1898,7 +1907,7 @@ function createMultiLineLineInput(
     }
 
     // Initial draw
-    redrawMultiLineCodeBlock(allLines, currentLineIndex, completedResults, '');
+    redrawMultiLineCodeBlock(allLines, currentLineIndex, completedResults, '', hasExplanation);
 
     let inputBuffer = '';
     let correctCount = 0;
@@ -1926,7 +1935,7 @@ function createMultiLineLineInput(
       // Shift+Tab - cycle mode
       if (key === '\x1b[Z') {
         cycleMode();
-        redrawMultiLineCodeBlock(allLines, currentLineIndex, completedResults, inputBuffer);
+        redrawMultiLineCodeBlock(allLines, currentLineIndex, completedResults, inputBuffer, hasExplanation);
         return;
       }
 
@@ -1944,7 +1953,7 @@ function createMultiLineLineInput(
               return;
             }
             // Don't allow submission - just redraw to show current state
-            redrawMultiLineCodeBlock(allLines, currentLineIndex, completedResults, inputBuffer);
+            redrawMultiLineCodeBlock(allLines, currentLineIndex, completedResults, inputBuffer, hasExplanation);
             return;
           }
         }
@@ -1961,7 +1970,7 @@ function createMultiLineLineInput(
             correctCount--;
           }
           inputBuffer = inputBuffer.slice(0, -1);
-          redrawMultiLineCodeBlock(allLines, currentLineIndex, completedResults, inputBuffer);
+          redrawMultiLineCodeBlock(allLines, currentLineIndex, completedResults, inputBuffer, hasExplanation);
         }
         return;
       }
@@ -1985,7 +1994,7 @@ function createMultiLineLineInput(
           }
         }
 
-        redrawMultiLineCodeBlock(allLines, currentLineIndex, completedResults, inputBuffer);
+        redrawMultiLineCodeBlock(allLines, currentLineIndex, completedResults, inputBuffer, hasExplanation);
       }
     };
 
