@@ -663,6 +663,27 @@ export function displayHelperText(): void {
 let questionPromptLines = 4;
 
 /**
+ * Word-wrap text to fit within maxWidth, keeping words intact
+ */
+function wordWrap(text: string, maxWidth: number, indent: string = ''): string[] {
+  if (text.length <= maxWidth) return [text];
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let currentLine = '';
+  for (const word of words) {
+    const testLine = currentLine ? `${currentLine} ${word}` : word;
+    if (testLine.length <= maxWidth) {
+      currentLine = testLine;
+    } else {
+      if (currentLine) lines.push(currentLine);
+      currentLine = indent + word;
+    }
+  }
+  if (currentLine) lines.push(currentLine);
+  return lines.length > 0 ? lines : [text];
+}
+
+/**
  * Calculate how many terminal lines a string will occupy when printed
  */
 function getDisplayLineCount(text: string): number {
@@ -713,10 +734,24 @@ export function closeQuestionPrompt(question: string, answer: string): void {
   process.stdout.write(`\x1B[${questionPromptLines}A`);
 
   // Redraw as clean log entry (condensed - no bars)
+  const termWidth = process.stdout.columns || 80;
+  const prefix = symbols.arrow + ' ';
+  const prefixLen = 2; // "› " is 2 chars
+
   process.stdout.write('\r\x1B[K');
   console.log(colors.dim(cleanQuestion));
-  process.stdout.write('\r\x1B[K');
-  console.log(colors.primary(symbols.arrow + ' ') + answer);
+
+  // Word-wrap the answer, with continuation lines indented to align
+  const wrappedAnswer = wordWrap(answer, termWidth - prefixLen, '  ');
+  wrappedAnswer.forEach((line, i) => {
+    process.stdout.write('\r\x1B[K');
+    if (i === 0) {
+      console.log(colors.primary(prefix) + line);
+    } else {
+      console.log('  ' + line);
+    }
+  });
+
   process.stdout.write('\r\x1B[K');
   console.log(); // Blank line
 }
