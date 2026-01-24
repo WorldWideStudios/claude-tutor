@@ -118,6 +118,10 @@ export function createMultiQuestionWizard(
     const customInputMode: boolean[] = questions.map(() => false);
     const customInputValues: string[] = questions.map(() => '');
 
+    // Track the actual number of lines currently displayed on screen
+    // This is crucial for cursor positioning after mode changes (e.g., entering custom input mode)
+    let currentDisplayedLines = 0;
+
     // Calculate lines for a question display
     const getQuestionDisplayLines = (qIdx: number): number => {
       const q = questions[qIdx];
@@ -265,6 +269,9 @@ export function createMultiQuestionWizard(
       // Bottom bar
       process.stdout.write('\r\x1B[K');
       console.log(drawBar());
+
+      // Update the tracked display line count after drawing
+      currentDisplayedLines = getQuestionDisplayLines(currentQuestionIndex);
     };
 
     // Redraw custom input inline on the "Other" option line
@@ -334,30 +341,42 @@ export function createMultiQuestionWizard(
       // Bottom bar
       process.stdout.write('\r\x1B[K');
       console.log(drawBar());
+
+      // Update tracked display lines for summary
+      currentDisplayedLines = getSummaryDisplayLines();
     };
 
     const redrawQuestion = () => {
-      // Move cursor up to account for where it is after drawQuestion
-      // Cursor is one line below bottom bar after initial draw (due to console.log newline)
-      const totalLines = getQuestionDisplayLines(currentQuestionIndex);
-      // Move up totalLines (cursor is on line after last line)
-      process.stdout.write(`\x1B[${totalLines}A`);
-      // Clear exactly totalLines lines
-      for (let i = 0; i < totalLines; i++) {
+      // Use tracked display lines (what's actually on screen) for cursor movement
+      // This is crucial when transitioning between modes (e.g., entering custom input mode)
+      // where "Other (type your own)" has different length than "Other: █"
+      const linesToClear = currentDisplayedLines || getQuestionDisplayLines(currentQuestionIndex);
+      const newLines = getQuestionDisplayLines(currentQuestionIndex);
+
+      // Move up to top of OLD display (using tracked lines, not recalculated)
+      process.stdout.write(`\x1B[${linesToClear}A`);
+      // Clear enough lines to cover both old and new display
+      for (let i = 0; i < Math.max(linesToClear, newLines); i++) {
         process.stdout.write('\r\x1B[K\n');
       }
-      process.stdout.write(`\x1B[${totalLines}A`);
+      // Move back up by NEW line count to position for drawing
+      process.stdout.write(`\x1B[${Math.max(linesToClear, newLines)}A`);
       drawQuestion();
     };
 
     const redrawSummary = () => {
-      const totalLines = getSummaryDisplayLines();
-      // Move up totalLines (cursor is on line after last line)
-      process.stdout.write(`\x1B[${totalLines}A`);
-      for (let i = 0; i < totalLines; i++) {
+      // Use tracked display lines for cursor movement
+      const linesToClear = currentDisplayedLines || getSummaryDisplayLines();
+      const newLines = getSummaryDisplayLines();
+
+      // Move up to top of OLD display
+      process.stdout.write(`\x1B[${linesToClear}A`);
+      // Clear enough lines to cover both old and new display
+      for (let i = 0; i < Math.max(linesToClear, newLines); i++) {
         process.stdout.write('\r\x1B[K\n');
       }
-      process.stdout.write(`\x1B[${totalLines}A`);
+      // Move back up by new line count
+      process.stdout.write(`\x1B[${Math.max(linesToClear, newLines)}A`);
       drawSummary();
     };
 
@@ -366,6 +385,8 @@ export function createMultiQuestionWizard(
 
     // Initial draw
     drawQuestion();
+    // Initialize tracked display lines after first draw
+    currentDisplayedLines = getQuestionDisplayLines(currentQuestionIndex);
 
     // Enable raw mode for direct character input
     // Note: We don't use rl.pause()/resume() because readline's internal listener
@@ -550,22 +571,11 @@ export function createMultiQuestionWizard(
 
         // Check if "Other" option selected
         if (selectedOpt.value === '__OTHER__') {
-          // Calculate prevLines BEFORE changing customInputMode
-          // because "Other (type your own)" has different length than "Other: █"
-          const prevLines = getQuestionDisplayLines(currentQuestionIndex);
-
+          // Enter custom input mode - redrawQuestion() will use tracked lines
+          // to properly handle the mode change (line count changes)
           customInputMode[currentQuestionIndex] = true;
           customInputValues[currentQuestionIndex] = '';
-
-          // Clear old display and redraw with custom input mode
-          const newLines = getQuestionDisplayLines(currentQuestionIndex);
-          const linesToClear = Math.max(prevLines, newLines) + 2;
-          process.stdout.write(`\x1B[${linesToClear}A`);
-          for (let i = 0; i < linesToClear; i++) {
-            process.stdout.write('\r\x1B[K\n');
-          }
-          process.stdout.write(`\x1B[${newLines}A`);
-          drawQuestion();
+          redrawQuestion();
           return;
         }
 
