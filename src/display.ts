@@ -680,13 +680,16 @@ function getDisplayLineCount(text: string): number {
  * Display question prompt for setup with full-width lines
  */
 export function displayQuestionPrompt(question: string): void {
+  // Strip any HTML tags from the question
+  const cleanQuestion = stripHtmlTags(question);
+
   console.log(drawBar());
-  console.log(colors.text(question));
+  console.log(colors.text(cleanQuestion));
   console.log(drawBar());
   process.stdout.write(colors.primary(symbols.arrow + ' '));
 
   // Calculate total lines: top bar (1) + question text lines + bottom bar (1) + prompt line (1)
-  const questionLines = getDisplayLineCount(question);
+  const questionLines = getDisplayLineCount(cleanQuestion);
   questionPromptLines = 1 + questionLines + 1 + 1; // top bar + question + bottom bar + prompt
 }
 
@@ -696,6 +699,9 @@ export function displayQuestionPrompt(question: string): void {
  */
 export function closeQuestionPrompt(question: string, answer: string): void {
   if (!process.stdout.isTTY) return;
+
+  // Strip any HTML tags from the question
+  const cleanQuestion = stripHtmlTags(question);
 
   // Move cursor up to clear the entry box (calculated lines from displayQuestionPrompt)
   process.stdout.write(`\x1B[${questionPromptLines}A`);
@@ -708,7 +714,7 @@ export function closeQuestionPrompt(question: string, answer: string): void {
 
   // Redraw as clean log entry (condensed - no bars)
   process.stdout.write('\r\x1B[K');
-  console.log(colors.dim(question));
+  console.log(colors.dim(cleanQuestion));
   process.stdout.write('\r\x1B[K');
   console.log(colors.primary(symbols.arrow + ' ') + answer);
   process.stdout.write('\r\x1B[K');

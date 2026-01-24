@@ -125,10 +125,22 @@ export function createMultiQuestionWizard(
       let total = 1; // top bar
       total += 1; // progress line
       total += wordWrap(q.question, termWidth - 1).length;
-      opts.forEach((opt) => {
-        const prefix = '  1. ';
-        const desc = opt.description ? ` - ${opt.description}` : '';
-        const fullLine = prefix + opt.label + desc;
+      opts.forEach((opt, i) => {
+        const num = `${i + 1}.`;
+        const prefix = `  ${num} `;
+
+        // For "Other" option in custom input mode, use actual displayed text
+        const isOtherOption = opt.value === '__OTHER__';
+        const inCustomMode = customInputMode[qIdx];
+
+        let displayLabel = opt.label;
+        if (isOtherOption && inCustomMode) {
+          const typedValue = customInputValues[qIdx];
+          displayLabel = typedValue ? `Other: ${typedValue}█` : 'Other: █';
+        }
+
+        const desc = (!isOtherOption || !inCustomMode) && opt.description ? ` - ${opt.description}` : '';
+        const fullLine = prefix + displayLabel + desc;
         total += wordWrap(fullLine, termWidth - 1, '       ').length;
       });
       total += 1; // navigation hint
