@@ -516,7 +516,7 @@ export function createMultiQuestionWizard(
           // Backspace
           if (customInputValue.length > 0) {
             customInputValue = customInputValue.slice(0, -1);
-            redrawOtherLineOnly();
+            redrawQuestion(); // Full redraw to handle text that may wrap
           }
           return;
         }
@@ -530,7 +530,7 @@ export function createMultiQuestionWizard(
         // Regular character - add to custom input
         if (key.length === 1 && key >= ' ') {
           customInputValue += key;
-          redrawOtherLineOnly();
+          redrawQuestion(); // Full redraw to handle text that may wrap
         }
         return;
       }
