@@ -550,10 +550,22 @@ export function createMultiQuestionWizard(
 
         // Check if "Other" option selected
         if (selectedOpt.value === '__OTHER__') {
+          // Calculate prevLines BEFORE changing customInputMode
+          // because "Other (type your own)" has different length than "Other: █"
+          const prevLines = getQuestionDisplayLines(currentQuestionIndex);
+
           customInputMode[currentQuestionIndex] = true;
           customInputValues[currentQuestionIndex] = '';
-          // Just redraw the question - the "Other" line will show the cursor inline
-          redrawQuestion();
+
+          // Clear old display and redraw with custom input mode
+          const newLines = getQuestionDisplayLines(currentQuestionIndex);
+          const linesToClear = Math.max(prevLines, newLines) + 2;
+          process.stdout.write(`\x1B[${linesToClear}A`);
+          for (let i = 0; i < linesToClear; i++) {
+            process.stdout.write('\r\x1B[K\n');
+          }
+          process.stdout.write(`\x1B[${newLines}A`);
+          drawQuestion();
           return;
         }
 
