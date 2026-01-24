@@ -355,14 +355,11 @@ export function createMultiQuestionWizard(
 
     const redrawQuestion = () => {
       // Use tracked display lines (what's actually on screen) for cursor movement
-      // This is crucial when transitioning between modes (e.g., entering custom input mode)
-      // where "Other (type your own)" has different length than "Other: █"
-      const linesToClear = (currentDisplayedLines || getQuestionDisplayLines(currentQuestionIndex)) + 1;
-      const newLines = getQuestionDisplayLines(currentQuestionIndex);
+      const linesToClear = currentDisplayedLines || getQuestionDisplayLines(currentQuestionIndex);
 
-      // Move up to top of display (+1 for the cleared line below bar)
+      // Move up to top of display
       process.stdout.write(`\x1B[${linesToClear}A`);
-      // Clear all lines including the one below the bar
+      // Clear all lines
       for (let i = 0; i < linesToClear; i++) {
         process.stdout.write('\r\x1B[K\n');
       }
@@ -372,12 +369,12 @@ export function createMultiQuestionWizard(
     };
 
     const redrawSummary = () => {
-      // Use tracked display lines for cursor movement (+1 for cleared line below bar)
-      const linesToClear = (currentDisplayedLines || getSummaryDisplayLines()) + 1;
+      // Use tracked display lines for cursor movement
+      const linesToClear = currentDisplayedLines || getSummaryDisplayLines();
 
       // Move up to top of display
       process.stdout.write(`\x1B[${linesToClear}A`);
-      // Clear all lines including the one below the bar
+      // Clear all lines
       for (let i = 0; i < linesToClear; i++) {
         process.stdout.write('\r\x1B[K\n');
       }
@@ -393,6 +390,14 @@ export function createMultiQuestionWizard(
     drawQuestion();
     // Initialize tracked display lines after first draw
     currentDisplayedLines = getQuestionDisplayLines(currentQuestionIndex);
+
+    // Clear several extra lines below to remove any old terminal content
+    // that might have been on screen before the wizard was drawn
+    for (let i = 0; i < 5; i++) {
+      process.stdout.write('\r\x1B[K\n');
+    }
+    // Move cursor back to just below the bar
+    process.stdout.write('\x1B[5A');
 
     // Enable raw mode for direct character input
     // Note: We don't use rl.pause()/resume() because readline's internal listener
