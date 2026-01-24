@@ -699,19 +699,28 @@ function getDisplayLineCount(text: string): number {
 
 /**
  * Display question prompt for setup with full-width lines
+ * Entry box with green caret and bottom bar
  */
 export function displayQuestionPrompt(question: string): void {
   // Strip any HTML tags from the question
   const cleanQuestion = stripHtmlTags(question);
 
+  // Top bar
   console.log(drawBar());
+  // Question text
   console.log(colors.text(cleanQuestion));
+  // Input line with green caret
+  console.log(colors.primary(symbols.arrow + ' '));
+  // Bottom bar
   console.log(drawBar());
-  process.stdout.write(colors.primary(symbols.arrow + ' '));
 
-  // Calculate total lines: top bar (1) + question text lines + bottom bar (1) + prompt line (1)
+  // Move cursor back up to input line (from after bottom bar to input line)
+  // Position cursor after the green caret
+  process.stdout.write('\x1B[2A\x1B[3G');
+
+  // Calculate total lines: top bar (1) + question text lines + input (1) + bottom bar (1)
   const questionLines = getDisplayLineCount(cleanQuestion);
-  questionPromptLines = 1 + questionLines + 1 + 1; // top bar + question + bottom bar + prompt
+  questionPromptLines = 1 + questionLines + 1 + 1; // top bar + question + input + bottom bar
 }
 
 /**

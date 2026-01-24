@@ -456,14 +456,11 @@ export function createMultiQuestionWizard(
             currentQuestionIndex = summarySelectedIndex;
             showingSummary = false;
             // Clear summary and draw question
-            const summaryLines = getSummaryDisplayLines();
-            const questionLines = getQuestionDisplayLines(currentQuestionIndex);
-            const linesToClear = Math.max(summaryLines, questionLines) + 2;
+            const linesToClear = currentDisplayedLines || getSummaryDisplayLines();
             process.stdout.write(`\x1B[${linesToClear}A`);
             for (let i = 0; i < linesToClear; i++) {
               process.stdout.write('\r\x1B[K\n');
             }
-            // Move back up by the same amount we cleared
             process.stdout.write(`\x1B[${linesToClear}A`);
             drawQuestion();
           }
@@ -496,16 +493,12 @@ export function createMultiQuestionWizard(
               // Last question - show summary
               showingSummary = true;
               summarySelectedIndex = questions.length;
-              redrawQuestion(); // Clear current display
-              // Now draw summary over it
-              const questionLines = getQuestionDisplayLines(currentQuestionIndex);
-              const summaryLines = getSummaryDisplayLines();
-              const linesToClear = Math.max(questionLines, summaryLines) + 2;
+              // Clear current display and draw summary
+              const linesToClear = currentDisplayedLines || getQuestionDisplayLines(currentQuestionIndex);
               process.stdout.write(`\x1B[${linesToClear}A`);
               for (let i = 0; i < linesToClear; i++) {
                 process.stdout.write('\r\x1B[K\n');
               }
-              // Move back up by the same amount we cleared
               process.stdout.write(`\x1B[${linesToClear}A`);
               drawSummary();
             }
@@ -550,34 +543,14 @@ export function createMultiQuestionWizard(
       } else if (key === '\x1b[D' || key === '\x1bOD') {
         // Left arrow - go to previous question
         if (currentQuestionIndex > 0) {
-          const prevLines = getQuestionDisplayLines(currentQuestionIndex);
           currentQuestionIndex--;
-          const newLines = getQuestionDisplayLines(currentQuestionIndex);
-          // Add buffer lines to ensure we clear everything
-          const linesToClear = Math.max(prevLines, newLines) + 2;
-          process.stdout.write(`\x1B[${linesToClear}A`);
-          for (let i = 0; i < linesToClear; i++) {
-            process.stdout.write('\r\x1B[K\n');
-          }
-          // Move back up by the same amount we cleared
-          process.stdout.write(`\x1B[${linesToClear}A`);
-          drawQuestion();
+          redrawQuestion();
         }
       } else if (key === '\x1b[C' || key === '\x1bOC') {
         // Right arrow - go to next question (if answered)
         if (currentQuestionIndex < questions.length - 1 && answers[currentQuestionIndex] !== null) {
-          const prevLines = getQuestionDisplayLines(currentQuestionIndex);
           currentQuestionIndex++;
-          const newLines = getQuestionDisplayLines(currentQuestionIndex);
-          // Add buffer lines to ensure we clear everything
-          const linesToClear = Math.max(prevLines, newLines) + 2;
-          process.stdout.write(`\x1B[${linesToClear}A`);
-          for (let i = 0; i < linesToClear; i++) {
-            process.stdout.write('\r\x1B[K\n');
-          }
-          // Move back up by the same amount we cleared
-          process.stdout.write(`\x1B[${linesToClear}A`);
-          drawQuestion();
+          redrawQuestion();
         }
       } else if (key.length === 1 && key >= ' ' && key <= '~') {
         // Regular printable character in selection mode
@@ -605,34 +578,20 @@ export function createMultiQuestionWizard(
 
         if (currentQuestionIndex < questions.length - 1) {
           // Move to next question
-          const prevLines = getQuestionDisplayLines(currentQuestionIndex);
           currentQuestionIndex++;
-          const newLines = getQuestionDisplayLines(currentQuestionIndex);
-          // Add buffer lines to ensure we clear everything (cursor may be offset)
-          const linesToClear = Math.max(prevLines, newLines) + 2;
-          process.stdout.write(`\x1B[${linesToClear}A`);
-          for (let i = 0; i < linesToClear; i++) {
-            process.stdout.write('\r\x1B[K\n');
-          }
-          // Move back up by the same amount we cleared
-          process.stdout.write(`\x1B[${linesToClear}A`);
-          drawQuestion();
+          redrawQuestion();
         } else {
           // Last question - show summary
-          // Clear the question display first (before setting showingSummary)
-          const questionLines = getQuestionDisplayLines(currentQuestionIndex);
-          const summaryLines = getSummaryDisplayLines();
-          const linesToClear = Math.max(questionLines, summaryLines) + 2;
+          showingSummary = true;
+          summarySelectedIndex = questions.length; // Default to Submit
+          // Use redrawQuestion to clear current display, then draw summary
+          const linesToClear = currentDisplayedLines || getQuestionDisplayLines(currentQuestionIndex);
           process.stdout.write(`\x1B[${linesToClear}A`);
           for (let i = 0; i < linesToClear; i++) {
             process.stdout.write('\r\x1B[K\n');
           }
-          // Move back up by the same amount we cleared
           process.stdout.write(`\x1B[${linesToClear}A`);
-
-          showingSummary = true;
-          summarySelectedIndex = questions.length; // Default to Submit
-          drawSummary(); // No need for clearFirst since we already cleared
+          drawSummary();
         }
       }
     };
