@@ -355,6 +355,9 @@ async function startCommand(projectDir: string | undefined): Promise<void> {
     return new Promise((resolve) => {
       displayQuestionPrompt(prompt);
 
+      // Pause readline to prevent it from also receiving input (causes double chars)
+      rl.pause();
+
       // Use raw mode instead of readline to preserve styling
       process.stdin.setRawMode(true);
       process.stdin.resume();
@@ -367,12 +370,14 @@ async function startCommand(projectDir: string | undefined): Promise<void> {
         if (char === '\x03') { // Ctrl+C
           process.stdin.setRawMode(false);
           process.stdin.removeListener('data', handleInput);
+          rl.resume();
           process.exit(0);
         }
 
         if (char === '\r' || char === '\n') { // Enter
           process.stdin.setRawMode(false);
           process.stdin.removeListener('data', handleInput);
+          rl.resume();
           closeQuestionPrompt(prompt, inputBuffer);
           resolve(inputBuffer);
           return;

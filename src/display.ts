@@ -716,13 +716,17 @@ export function displayQuestionPrompt(question: string): void {
   }
   process.stdout.write(`\x1B[${bufferLines}A`);
 
-  // Top bar
+  // Top bar (clear line first to remove buffer artifacts)
+  process.stdout.write('\r\x1B[K');
   console.log(drawBar());
   // Question text
+  process.stdout.write('\r\x1B[K');
   console.log(colors.text(cleanQuestion));
   // Input line with green caret
+  process.stdout.write('\r\x1B[K');
   console.log(colors.primary(symbols.arrow + ' '));
   // Bottom bar
+  process.stdout.write('\r\x1B[K');
   console.log(drawBar());
 
   // Move cursor back up to input line (from after bottom bar to input line)
