@@ -124,7 +124,7 @@ export function displayWelcome(currentSkill?: string): void {
   console.log();
 
   const title = 'Claude Tutor';
-  const version = 'v0.1.0';
+  const version = 'v0.1.1';
   const tagline = 'Learn to code like an engineer';
   const skillLine = currentSkill ? `Learning: ${currentSkill}` : '';
 
