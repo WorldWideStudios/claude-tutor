@@ -77,6 +77,30 @@ function getWidth(): number {
 }
 
 /**
+ * Get available width for code display (accounts for prefix like "› " or "NN│ ")
+ */
+function getCodeDisplayWidth(prefixLen: number = 2): number {
+  return getWidth() - prefixLen - 1; // -1 for safety margin
+}
+
+/**
+ * Truncate text to fit terminal width, adding "…" if truncated
+ */
+function truncateForDisplay(text: string, maxWidth: number): string {
+  if (text.length <= maxWidth) return text;
+  return text.slice(0, maxWidth - 1) + '…';
+}
+
+/**
+ * Get the visible portion of input when it exceeds maxWidth
+ * Shows rightmost portion with "…" prefix
+ */
+function getVisibleInput(input: string, maxWidth: number): string {
+  if (input.length <= maxWidth) return input;
+  return '…' + input.slice(-(maxWidth - 1));
+}
+
+/**
  * Draw a horizontal bar
  */
 export function drawBar(): string {
@@ -164,7 +188,7 @@ export function startLoading(): void {
     // Use currentStatus if set, otherwise show current fun word
     const displayText = currentStatus || funWords[wordIndex % funWords.length];
 
-    process.stdout.write(`\r${colors.primaryDim(frame)} ${colors.dim(displayText + '...')}    `);
+    process.stdout.write(`\r\x1B[K${colors.primaryDim(frame)} ${colors.dim(displayText + '...')}`);
 
     spinnerIndex++;
   }, 100);
@@ -392,14 +416,26 @@ export function displayResume(curriculum: Curriculum, state: TutorState): void {
 let isFirstChunk = true;
 
 /**
+ * Strip HTML tags from text for clean terminal display
+ */
+function stripHtmlTags(text: string): string {
+  // Remove HTML tags like <think>, </think>, <response>, etc.
+  return text.replace(/<[^>]*>/g, '');
+}
+
+/**
  * Display tutor response (streaming)
  */
 export function displayTutorText(text: string): void {
+  // Strip any HTML tags from Claude's response
+  const cleanText = stripHtmlTags(text);
+  if (!cleanText) return; // Skip if only HTML tags
+
   if (isFirstChunk) {
     process.stdout.write(colors.dim(symbols.bullet + ' '));
     isFirstChunk = false;
   }
-  process.stdout.write(text);
+  process.stdout.write(cleanText);
 }
 
 /**
@@ -572,7 +608,7 @@ export function displayModeFooter(): void {
 /**
  * Display mode footer inline (without newline) for redraw operations
  */
-function displayModeFooterInline(): void {
+export function displayModeFooterInline(): void {
   process.stdout.write(getModeIndicator());
 }
 
@@ -897,17 +933,22 @@ export function displayTyperSharkInput(input: string, prompt: string = '› '): 
 export function redrawTyperShark(expected: string, input: string, correctCount: number): void {
   if (!process.stdout.isTTY) return;
 
+  // Truncate to prevent line wrapping which breaks cursor positioning
+  const codeWidth = getCodeDisplayWidth(2); // "  " or "› " prefix
+  const truncatedExpected = truncateForDisplay(expected, codeWidth);
+
   // Move up 2 lines (from input line, past top bar, to target line)
   // Use \x1B[2A (cursor up) which doesn't cause scrolling issues
   process.stdout.write('\x1B[2A\r\x1B[K');
 
-  // Draw target
+  // Draw target (truncated, with progress coloring)
   let targetOutput = '  ';
-  for (let i = 0; i < expected.length; i++) {
-    if (i < correctCount) {
-      targetOutput += colors.success(expected[i]);
+  for (let i = 0; i < truncatedExpected.length; i++) {
+    // Map truncated position to original position for correct coloring
+    if (i < correctCount && i < expected.length) {
+      targetOutput += colors.success(truncatedExpected[i]);
     } else {
-      targetOutput += colors.tan(expected[i]);
+      targetOutput += colors.tan(truncatedExpected[i]);
     }
   }
   process.stdout.write(targetOutput);
@@ -917,9 +958,10 @@ export function redrawTyperShark(expected: string, input: string, correctCount: 
   process.stdout.write('\x1B[1B\r\x1B[K');
   process.stdout.write(drawBar());
 
-  // Move down, clear, draw input
+  // Move down, clear, draw input (show rightmost portion if too long)
   process.stdout.write('\x1B[1B\r\x1B[K');
-  process.stdout.write(colors.dim('› ') + input);
+  const visibleInput = getVisibleInput(input, codeWidth);
+  process.stdout.write(colors.dim('› ') + visibleInput);
 
   // Move down, redraw bottom bar
   process.stdout.write('\x1B[1B\r\x1B[K');
@@ -932,7 +974,7 @@ export function redrawTyperShark(expected: string, input: string, correctCount: 
   // Move cursor back up to input line
   process.stdout.write('\x1B[2A');
   // Position cursor at end of input
-  process.stdout.write(`\r${colors.dim('› ')}${input}`);
+  process.stdout.write(`\r${colors.dim('› ')}${visibleInput}`);
 }
 
 /**
@@ -971,12 +1013,17 @@ export function initTyperSharkDisplay(expected: string, explanation?: string): v
   // Move back up to where we want to start the display
   process.stdout.write(`\x1B[${bufferLines}A`);
 
+  // Truncate long text to prevent line wrapping which breaks cursor positioning
+  const codeWidth = getCodeDisplayWidth(2); // "  " prefix
+  const truncatedExpected = truncateForDisplay(expected, codeWidth);
+
   console.log();
   if (explanation) {
-    console.log(colors.dim(`  // ${explanation}`));
+    const truncatedExplanation = truncateForDisplay(explanation, codeWidth - 3); // "// " prefix
+    console.log(colors.dim(`  // ${truncatedExplanation}`));
   }
-  // Show target line in yellow (all untyped)
-  console.log('  ' + colors.tan(expected));
+  // Show target line in tan (all untyped) - truncated to fit terminal
+  console.log('  ' + colors.tan(truncatedExpected));
   // Top gray line - upper border of entry field
   console.log(drawBar());
   // Show input prompt (cursor will be here)

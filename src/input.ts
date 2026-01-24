@@ -12,6 +12,8 @@ import {
   clearForTyperShark,
   drawBar,
   getModeIndicator,
+  displayModeFooter,
+  displayModeFooterInline,
 } from './display.js';
 import { cycleMode, getMode, isDiscussMode, isBlockMode, isTutorMode } from './mode.js';
 import chalk from 'chalk';
@@ -107,13 +109,23 @@ export function createMultiQuestionWizard(
       return lines.length > 0 ? lines : [text];
     };
 
+    // Add "Other" option to each question's options list for display
+    const getOptionsWithOther = (qIdx: number): SelectOption[] => {
+      return [...questions[qIdx].options, { label: 'Other (type your own)', value: '__OTHER__', description: '' }];
+    };
+
+    // Track which questions are in custom input mode
+    const customInputMode: boolean[] = questions.map(() => false);
+    const customInputValues: string[] = questions.map(() => '');
+
     // Calculate lines for a question display
     const getQuestionDisplayLines = (qIdx: number): number => {
       const q = questions[qIdx];
+      const opts = getOptionsWithOther(qIdx);
       let total = 1; // top bar
       total += 1; // progress line
       total += wordWrap(q.question, termWidth - 1).length;
-      q.options.forEach((opt) => {
+      opts.forEach((opt) => {
         const prefix = '  1. ';
         const desc = opt.description ? ` - ${opt.description}` : '';
         const fullLine = prefix + opt.label + desc;
@@ -141,6 +153,7 @@ export function createMultiQuestionWizard(
 
     const drawQuestion = (clearFirst: boolean = false) => {
       const q = questions[currentQuestionIndex];
+      const opts = getOptionsWithOther(currentQuestionIndex);
       const selectedIdx = selectedIndices[currentQuestionIndex];
       const totalLines = getQuestionDisplayLines(currentQuestionIndex);
 
@@ -167,18 +180,30 @@ export function createMultiQuestionWizard(
         console.log(colors.primary(line));
       });
 
-      // Options
-      q.options.forEach((opt, i) => {
+      // Options (including "Other")
+      opts.forEach((opt, i) => {
         const num = `${i + 1}.`;
         const prefix = i === selectedIdx ? `› ${num} ` : `  ${num} `;
-        const desc = opt.description ? ` - ${opt.description}` : '';
-        const fullText = prefix + opt.label + desc;
+
+        // For "Other" option in custom input mode, show the typed value
+        const isOtherOption = opt.value === '__OTHER__';
+        const inCustomMode = customInputMode[currentQuestionIndex];
+
+        let displayLabel = opt.label;
+        if (isOtherOption && inCustomMode) {
+          // Replace "Other (type your own)" with actual typed value
+          const typedValue = customInputValues[currentQuestionIndex];
+          displayLabel = typedValue ? `Other: ${typedValue}█` : 'Other: █';
+        }
+
+        const desc = (!isOtherOption || !inCustomMode) && opt.description ? ` - ${opt.description}` : '';
+        const fullText = prefix + displayLabel + desc;
         const wrappedLines = wordWrap(fullText, termWidth - 1, '       ');
 
         wrappedLines.forEach((line, lineIdx) => {
           process.stdout.write('\r\x1B[K');
           if (lineIdx === 0) {
-            const prefixAndLabel = prefix + opt.label;
+            const prefixAndLabel = prefix + displayLabel;
             if (i === selectedIdx) {
               if (line.length <= prefixAndLabel.length) {
                 process.stdout.write(colors.primary(line));
@@ -203,16 +228,30 @@ export function createMultiQuestionWizard(
 
       // Navigation hint
       process.stdout.write('\r\x1B[K');
-      const navHint = currentQuestionIndex === 0
-        ? '↑↓ select • Enter confirm • → next'
-        : currentQuestionIndex === questions.length - 1
-          ? '↑↓ select • Enter confirm • ← back'
-          : '↑↓ select • Enter confirm • ←→ navigate';
+      let navHint: string;
+      if (customInputMode[currentQuestionIndex]) {
+        // In custom input mode - show typing instructions
+        navHint = 'Type your answer • Enter submit • Esc cancel';
+      } else if (currentQuestionIndex === 0) {
+        navHint = '↑↓ select • Enter confirm • → next';
+      } else if (currentQuestionIndex === questions.length - 1) {
+        navHint = '↑↓ select • Enter confirm • ← back';
+      } else {
+        navHint = '↑↓ select • Enter confirm • ←→ navigate';
+      }
       console.log(colors.dim(`  ${navHint}`));
 
       // Bottom bar
       process.stdout.write('\r\x1B[K');
       console.log(drawBar());
+    };
+
+    // Redraw custom input inline on the "Other" option line
+    // This keeps the same display structure but updates the "Other" line with typed text
+    const redrawCustomInputInline = () => {
+      // The display structure is the same as drawQuestion, just redraw it
+      // with the custom input value shown on the "Other" option line
+      redrawQuestion();
     };
 
     const drawSummary = (clearFirst: boolean = false) => {
@@ -244,7 +283,10 @@ export function createMultiQuestionWizard(
       questions.forEach((q, i) => {
         process.stdout.write('\r\x1B[K');
         const shortQ = q.header || q.question.slice(0, 30) + (q.question.length > 30 ? '...' : '');
-        const answerLabel = q.options.find(o => o.value === answers[i])?.label || answers[i] || '(no answer)';
+        // For custom answers, show the value directly; for preset options, show the label
+        const answerValue = answers[i];
+        const presetOpt = q.options.find(o => o.value === answerValue);
+        const answerLabel = presetOpt ? presetOpt.label : (answerValue || '(no answer)');
 
         if (i === summarySelectedIndex) {
           console.log(colors.primary(`› ${i + 1}. ${shortQ}`));
@@ -274,13 +316,26 @@ export function createMultiQuestionWizard(
     };
 
     const redrawQuestion = () => {
+      // Move cursor up to account for where it is after drawQuestion
+      // Cursor is one line below bottom bar after initial draw (due to console.log newline)
       const totalLines = getQuestionDisplayLines(currentQuestionIndex);
+      // Move up totalLines (cursor is on line after last line)
+      process.stdout.write(`\x1B[${totalLines}A`);
+      // Clear exactly totalLines lines
+      for (let i = 0; i < totalLines; i++) {
+        process.stdout.write('\r\x1B[K\n');
+      }
       process.stdout.write(`\x1B[${totalLines}A`);
       drawQuestion();
     };
 
     const redrawSummary = () => {
       const totalLines = getSummaryDisplayLines();
+      // Move up totalLines (cursor is on line after last line)
+      process.stdout.write(`\x1B[${totalLines}A`);
+      for (let i = 0; i < totalLines; i++) {
+        process.stdout.write('\r\x1B[K\n');
+      }
       process.stdout.write(`\x1B[${totalLines}A`);
       drawSummary();
     };
@@ -363,16 +418,76 @@ export function createMultiQuestionWizard(
         return;
       }
 
-      // Question mode
+      // Check if in custom input mode for this question
+      if (customInputMode[currentQuestionIndex]) {
+        // Custom input mode key handling - text appears inline on "Other" option
+        if (key === '\r' || key === '\n') {
+          // Submit custom input
+          const customValue = customInputValues[currentQuestionIndex].trim();
+          if (customValue) {
+            answers[currentQuestionIndex] = customValue;
+            customInputMode[currentQuestionIndex] = false;
+
+            if (currentQuestionIndex < questions.length - 1) {
+              // Move to next question
+              const prevLines = getQuestionDisplayLines(currentQuestionIndex);
+              currentQuestionIndex++;
+              const newLines = getQuestionDisplayLines(currentQuestionIndex);
+              const linesToClear = Math.max(prevLines, newLines) + 2;
+              process.stdout.write(`\x1B[${linesToClear}A`);
+              for (let i = 0; i < linesToClear; i++) {
+                process.stdout.write('\r\x1B[K\n');
+              }
+              process.stdout.write(`\x1B[${newLines}A`);
+              drawQuestion();
+            } else {
+              // Last question - show summary
+              const questionLines = getQuestionDisplayLines(currentQuestionIndex);
+              const summaryLines = getSummaryDisplayLines();
+              const linesToClear = Math.max(questionLines, summaryLines) + 2;
+              process.stdout.write(`\x1B[${linesToClear}A`);
+              for (let i = 0; i < linesToClear; i++) {
+                process.stdout.write('\r\x1B[K\n');
+              }
+              process.stdout.write(`\x1B[${summaryLines}A`);
+              showingSummary = true;
+              summarySelectedIndex = questions.length;
+              drawSummary();
+            }
+          }
+          return;
+        }
+        if (key === '\x7f' || key === '\b') {
+          // Backspace
+          customInputValues[currentQuestionIndex] = customInputValues[currentQuestionIndex].slice(0, -1);
+          redrawCustomInputInline();
+          return;
+        }
+        if (key === '\x1b') {
+          // Escape - go back to selection mode (clear typed value)
+          customInputMode[currentQuestionIndex] = false;
+          customInputValues[currentQuestionIndex] = '';
+          redrawQuestion();
+          return;
+        }
+        if (key.length === 1 && key >= ' ') {
+          customInputValues[currentQuestionIndex] += key;
+          redrawCustomInputInline();
+        }
+        return;
+      }
+
+      // Question mode (selection)
       const q = questions[currentQuestionIndex];
+      const opts = getOptionsWithOther(currentQuestionIndex);
 
       if (key === '\x1b[A' || key === '\x1bOA') {
         // Up arrow - select previous option
-        selectedIndices[currentQuestionIndex] = (selectedIndices[currentQuestionIndex] - 1 + q.options.length) % q.options.length;
+        selectedIndices[currentQuestionIndex] = (selectedIndices[currentQuestionIndex] - 1 + opts.length) % opts.length;
         redrawQuestion();
       } else if (key === '\x1b[B' || key === '\x1bOB') {
         // Down arrow - select next option
-        selectedIndices[currentQuestionIndex] = (selectedIndices[currentQuestionIndex] + 1) % q.options.length;
+        selectedIndices[currentQuestionIndex] = (selectedIndices[currentQuestionIndex] + 1) % opts.length;
         redrawQuestion();
       } else if (key === '\x1b[D' || key === '\x1bOD') {
         // Left arrow - go to previous question
@@ -408,7 +523,18 @@ export function createMultiQuestionWizard(
         }
       } else if (key === '\r' || key === '\n') {
         // Enter - confirm selection
-        answers[currentQuestionIndex] = q.options[selectedIndices[currentQuestionIndex]].value;
+        const selectedOpt = opts[selectedIndices[currentQuestionIndex]];
+
+        // Check if "Other" option selected
+        if (selectedOpt.value === '__OTHER__') {
+          customInputMode[currentQuestionIndex] = true;
+          customInputValues[currentQuestionIndex] = '';
+          // Just redraw the question - the "Other" line will show the cursor inline
+          redrawQuestion();
+          return;
+        }
+
+        answers[currentQuestionIndex] = selectedOpt.value;
 
         if (currentQuestionIndex < questions.length - 1) {
           // Move to next question
@@ -1316,8 +1442,19 @@ export function createTyperSharkInput(
         return;
       }
 
-      // Enter - submit input
+      // Enter - submit input (only if correct in tutor mode)
       if (key === '\r' || key === '\n') {
+        // In tutor mode, require exact match before allowing Enter
+        if (isTutorMode()) {
+          // Check if input matches expected text exactly
+          if (inputBuffer !== expectedText) {
+            // Don't allow submission - flash/indicate error
+            // Just redraw to show current state (user needs to fix their input)
+            redrawTyperShark(expectedText, inputBuffer, correctCount);
+            return;
+          }
+        }
+        // In block mode or when input is correct, allow submission
         cleanup();
         finishTyperSharkDisplay(inputBuffer, !!explanation); // Clear display and show entered text
         resolve(inputBuffer);
@@ -1398,8 +1535,9 @@ export function createTyperSharkInput(
 
 /**
  * Multi-line Typer Shark input for heredocs and multi-line code
- * Shows one line at a time like chained single-line Typer Shark
- * User types each line, presses Enter to advance to next line
+ * Shows the ENTIRE code block with progress tracking
+ * User types each line, pressing Enter advances to the next line
+ * Completed lines turn green, current line is highlighted in input area
  *
  * @param rl - readline interface
  * @param lines - array of code lines with comments
@@ -1415,42 +1553,437 @@ export async function createMultiLineTyperSharkInput(
   const results: string[] = [];
   const totalLineCount = lines.length;
 
+  // Filter out truly empty lines at start/end, but keep internal empty lines
+  // (they represent intentional blank lines in code)
+  const filteredLines = lines.filter((line, idx) => {
+    // Keep non-empty lines
+    if (line.code.trim() !== '') return true;
+    // Keep empty lines that are between non-empty lines
+    const hasBefore = lines.slice(0, idx).some(l => l.code.trim() !== '');
+    const hasAfter = lines.slice(idx + 1).some(l => l.code.trim() !== '');
+    return hasBefore && hasAfter;
+  });
+
+  // If all lines were empty, just return empty results
+  if (filteredLines.length === 0) {
+    return [];
+  }
+
   // Clear raw streamed output first
   if (linesToClear > 0) {
     clearForTyperShark(linesToClear);
   }
 
-  // Show brief explanation
-  if (explanation) {
-    console.log(colors.dim(`  // ${explanation}`));
-  }
-  console.log(colors.dim(`  Multi-line (${totalLineCount} lines):`));
-  console.log();
+  // Initialize the multi-line display showing ALL code at once
+  initMultiLineCodeBlock(filteredLines, explanation);
 
-  // Process each line using single-line Typer Shark
-  for (let i = 0; i < totalLineCount; i++) {
-    const line = lines[i];
-    const lineNum = i + 1;
+  // Process each line
+  for (let i = 0; i < filteredLines.length; i++) {
+    const line = filteredLines[i];
+    const expectedCode = line.code;
 
-    // Show line number first
-    console.log(colors.dim(`  // Line ${lineNum} of ${totalLineCount}`));
+    // Handle empty lines (internal blank lines) - auto-complete them
+    if (expectedCode.trim() === '') {
+      results.push('');
+      // Redraw with this line completed
+      redrawMultiLineCodeBlock(filteredLines, i + 1, results, '');
+      continue;
+    }
 
-    // Generate explanatory comment for this specific line
-    const lineComment = line.comment || '';
-
-    // Use single-line Typer Shark for this line (with explanatory comment)
-    const result = await createTyperSharkInput(rl, line.code, lineComment);
+    // Use the multi-line input handler for this line
+    const result = await createMultiLineLineInput(
+      rl,
+      filteredLines,
+      i,
+      results,
+      expectedCode
+    );
 
     // Check if user asked a question
-    if (isNaturalLanguageQuestion(result, line.code)) {
+    if (isNaturalLanguageQuestion(result, expectedCode)) {
+      finishMultiLineCodeBlock(filteredLines.length, !!explanation);
       return ['__QUESTION__:' + result];
     }
 
     results.push(result);
   }
 
+  // Clean up display and show completion
+  finishMultiLineCodeBlock(filteredLines.length, !!explanation);
   console.log(colors.success('✓ All lines entered!'));
   return results;
+}
+
+/**
+ * Get the maximum width available for code display
+ * Accounts for line number prefix "NN│ " (4 chars)
+ */
+function getCodeDisplayWidth(): number {
+  const termWidth = process.stdout.columns || 80;
+  const prefixWidth = 4; // "NN│ "
+  return termWidth - prefixWidth - 1; // -1 for safety margin
+}
+
+/**
+ * Wrap a code line to fit terminal width, returning array of lines
+ * First line has no indent, continuation lines have indent
+ */
+function wrapCodeLine(code: string, maxWidth: number): string[] {
+  if (code.length <= maxWidth) return [code];
+
+  const lines: string[] = [];
+  let remaining = code;
+  const continuationIndent = '    '; // 4 spaces for continuation
+
+  // First line gets full width
+  lines.push(remaining.slice(0, maxWidth));
+  remaining = remaining.slice(maxWidth);
+
+  // Continuation lines get width minus indent
+  const contWidth = maxWidth - continuationIndent.length;
+  while (remaining.length > 0) {
+    if (remaining.length <= contWidth) {
+      lines.push(continuationIndent + remaining);
+      break;
+    }
+    lines.push(continuationIndent + remaining.slice(0, contWidth));
+    remaining = remaining.slice(contWidth);
+  }
+
+  return lines;
+}
+
+/**
+ * Calculate total visual lines for a code block (accounting for wrapping)
+ */
+function getWrappedLineCount(lines: CodeLine[], codeWidth: number): number {
+  let total = 0;
+  for (const line of lines) {
+    total += wrapCodeLine(line.code, codeWidth).length;
+  }
+  return total;
+}
+
+/**
+ * Initialize multi-line code block display
+ * Shows entire code block with line numbers, wrapping long lines
+ */
+function initMultiLineCodeBlock(lines: CodeLine[], explanation?: string): void {
+  const codeWidth = getCodeDisplayWidth();
+
+  // Calculate total visual lines needed (accounting for wrapping)
+  const wrappedTotal = getWrappedLineCount(lines, codeWidth);
+
+  // Add buffer lines to prevent scroll issues
+  const bufferLines = wrappedTotal + 10;
+  for (let i = 0; i < bufferLines; i++) {
+    console.log();
+  }
+  process.stdout.write(`\x1B[${bufferLines}A`);
+
+  // Show explanation if provided
+  if (explanation) {
+    // Wrap explanation too if needed
+    const explainWidth = codeWidth - 3; // -3 for "// "
+    if (explanation.length <= explainWidth) {
+      console.log(colors.dim(`  // ${explanation}`));
+    } else {
+      const explainLines = wrapCodeLine(explanation, explainWidth);
+      explainLines.forEach((line, idx) => {
+        console.log(colors.dim(idx === 0 ? `  // ${line}` : `     ${line}`));
+      });
+    }
+  }
+
+  // Show all code lines (all tan initially) - wrapped to fit terminal
+  for (let i = 0; i < lines.length; i++) {
+    const lineNum = String(i + 1).padStart(2, ' ');
+    const wrappedLines = wrapCodeLine(lines[i].code, codeWidth);
+
+    wrappedLines.forEach((wrappedLine, wIdx) => {
+      if (wIdx === 0) {
+        console.log(colors.dim(`${lineNum}│ `) + colors.tan(wrappedLine));
+      } else {
+        // Continuation lines: show "  │ " prefix for visual alignment
+        console.log(colors.dim(`  │ `) + colors.tan(wrappedLine));
+      }
+    });
+  }
+
+  // Separator bar
+  console.log(drawBar());
+
+  // Input area - show first line prompt
+  console.log(colors.dim(' 1│ '));
+
+  // Bottom bar
+  console.log(drawBar());
+
+  // Mode footer
+  displayModeFooter();
+
+  // Move cursor to input line (3 up: after footer newline -> footer -> bottom bar -> input)
+  process.stdout.write('\x1B[3A');
+  process.stdout.write('\r' + colors.dim(' 1│ '));
+}
+
+/**
+ * Redraw multi-line code block with progress
+ * @param lines - all code lines
+ * @param completedCount - how many lines are completed
+ * @param completedResults - the text user typed for completed lines
+ * @param currentInput - current input being typed
+ */
+function redrawMultiLineCodeBlock(
+  lines: CodeLine[],
+  completedCount: number,
+  completedResults: string[],
+  currentInput: string
+): void {
+  if (!process.stdout.isTTY) return;
+
+  const codeWidth = getCodeDisplayWidth();
+
+  // Calculate total visual lines above cursor (accounting for wrapping)
+  const wrappedTotal = getWrappedLineCount(lines, codeWidth);
+  const linesAbove = wrappedTotal + 1; // wrapped code lines + separator
+
+  // Move to top of code block
+  process.stdout.write(`\x1B[${linesAbove}A`);
+
+  // Redraw all code lines with progress coloring (wrapped to fit terminal)
+  for (let i = 0; i < lines.length; i++) {
+    const lineNum = String(i + 1).padStart(2, ' ');
+    const originalCode = lines[i].code;
+    const wrappedLines = wrapCodeLine(originalCode, codeWidth);
+
+    wrappedLines.forEach((wrappedLine, wIdx) => {
+      process.stdout.write('\r\x1B[K');
+
+      // Calculate character offset for this wrapped portion
+      const charOffset = wIdx === 0 ? 0 : (codeWidth + (wIdx - 1) * (codeWidth - 4));
+
+      if (i < completedCount) {
+        // Completed line - show in green
+        if (wIdx === 0) {
+          process.stdout.write(colors.success(`${lineNum}│ `) + colors.success(wrappedLine));
+        } else {
+          process.stdout.write(colors.success(`  │ `) + colors.success(wrappedLine));
+        }
+      } else if (i === completedCount) {
+        // Current line - show with partial progress
+        const prefix = wIdx === 0 ? colors.primary(`${lineNum}│ `) : colors.primary(`  │ `);
+        let lineOutput = prefix;
+
+        // Color each character based on whether it matches
+        for (let j = 0; j < wrappedLine.length; j++) {
+          // Map wrapped position to original code position
+          let origPos: number;
+          if (wIdx === 0) {
+            origPos = j;
+          } else {
+            // For continuation lines, calculate position in original string
+            // First line: 0 to codeWidth-1
+            // Second line: codeWidth to codeWidth + (codeWidth - 4) - 1, but wrappedLine has 4-char indent
+            const continuationWidth = codeWidth - 4;
+            origPos = codeWidth + (wIdx - 1) * continuationWidth + (j - 4); // -4 for indent
+            if (j < 4) {
+              // This is the indent, not actual code
+              lineOutput += colors.tan(wrappedLine[j]);
+              continue;
+            }
+          }
+
+          if (origPos < currentInput.length && currentInput[origPos] === originalCode[origPos]) {
+            lineOutput += colors.success(wrappedLine[j]);
+          } else {
+            lineOutput += colors.tan(wrappedLine[j]);
+          }
+        }
+        process.stdout.write(lineOutput);
+      } else {
+        // Future line - show in tan
+        if (wIdx === 0) {
+          process.stdout.write(colors.dim(`${lineNum}│ `) + colors.tan(wrappedLine));
+        } else {
+          process.stdout.write(colors.dim(`  │ `) + colors.tan(wrappedLine));
+        }
+      }
+      process.stdout.write('\x1B[1B'); // Move down
+    });
+  }
+
+  // Redraw separator bar
+  process.stdout.write('\r\x1B[K');
+  process.stdout.write(drawBar());
+  process.stdout.write('\x1B[1B');
+
+  // Redraw input line - wrap if too long
+  process.stdout.write('\r\x1B[K');
+  const currentLineNum = String(completedCount + 1).padStart(2, ' ');
+  const inputWrapped = wrapCodeLine(currentInput, codeWidth);
+  // Show first line of input (or scroll to show end if very long)
+  const displayInput = inputWrapped.length > 1
+    ? '…' + currentInput.slice(-(codeWidth - 1)) // Show rightmost portion
+    : currentInput;
+  process.stdout.write(colors.dim(`${currentLineNum}│ `) + displayInput);
+  process.stdout.write('\x1B[1B');
+
+  // Redraw bottom bar
+  process.stdout.write('\r\x1B[K');
+  process.stdout.write(drawBar());
+  process.stdout.write('\x1B[1B');
+
+  // Redraw mode footer
+  process.stdout.write('\r\x1B[K');
+  displayModeFooterInline();
+
+  // Move back to input line (2 up: footer -> bottom bar -> input)
+  process.stdout.write('\x1B[2A');
+  process.stdout.write('\r' + colors.dim(`${currentLineNum}│ `) + displayInput);
+}
+
+/**
+ * Clean up multi-line code block display
+ * Note: We use a generous estimate to ensure all wrapped lines are cleared
+ */
+function finishMultiLineCodeBlock(lineCount: number, hasExplanation: boolean): void {
+  // Calculate total lines to clear (use generous estimate for wrapped lines)
+  // Each code line could wrap to multiple visual lines, so multiply by 3 for safety
+  // code lines * 3 (for wrapping) + separator + input + bottom bar + footer + explanation
+  const totalLines = lineCount * 3 + 4 + (hasExplanation ? 2 : 0);
+
+  // Move up to top
+  process.stdout.write(`\x1B[${totalLines - 1}A`);
+
+  // Clear all lines
+  for (let i = 0; i < totalLines; i++) {
+    process.stdout.write('\r\x1B[K');
+    if (i < totalLines - 1) {
+      process.stdout.write('\x1B[1B');
+    }
+  }
+
+  // Move back to top
+  process.stdout.write(`\x1B[${totalLines - 1}A`);
+}
+
+/**
+ * Handle input for a single line within the multi-line code block
+ */
+function createMultiLineLineInput(
+  rl: readline.Interface,
+  allLines: CodeLine[],
+  currentLineIndex: number,
+  completedResults: string[],
+  expectedText: string
+): Promise<string> {
+  return new Promise((resolve) => {
+    if (!process.stdin.isTTY) {
+      rl.once('line', resolve);
+      return;
+    }
+
+    // Initial draw
+    redrawMultiLineCodeBlock(allLines, currentLineIndex, completedResults, '');
+
+    let inputBuffer = '';
+    let correctCount = 0;
+    let escapeBuffer = '';
+    let escapeTimeout: NodeJS.Timeout | null = null;
+
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+
+    const cleanup = () => {
+      process.stdin.pause();
+      process.stdin.setRawMode(false);
+      process.stdin.removeListener('data', handleKeypress);
+      if (escapeTimeout) clearTimeout(escapeTimeout);
+    };
+
+    const processKey = (key: string) => {
+      // Ctrl+C - exit
+      if (key === '\x03') {
+        cleanup();
+        console.log('\n');
+        process.exit(0);
+      }
+
+      // Shift+Tab - cycle mode
+      if (key === '\x1b[Z') {
+        cycleMode();
+        redrawMultiLineCodeBlock(allLines, currentLineIndex, completedResults, inputBuffer);
+        return;
+      }
+
+      // Enter - always submit line (let Claude catch any errors)
+      if (key === '\r' || key === '\n') {
+        cleanup();
+        resolve(inputBuffer);
+        return;
+      }
+
+      // Backspace
+      if (key === '\x7f' || key === '\b') {
+        if (inputBuffer.length > 0) {
+          if (correctCount > 0 && correctCount === inputBuffer.length) {
+            correctCount--;
+          }
+          inputBuffer = inputBuffer.slice(0, -1);
+          redrawMultiLineCodeBlock(allLines, currentLineIndex, completedResults, inputBuffer);
+        }
+        return;
+      }
+
+      // Ignore lone escape
+      if (key === '\x1b') return;
+
+      // Ignore Tab
+      if (key === '\t') return;
+
+      // Regular character
+      if (key.length === 1 && key >= ' ') {
+        inputBuffer += key;
+
+        if (isBlockMode()) {
+          correctCount = inputBuffer.length;
+        } else {
+          const newCharPos = inputBuffer.length - 1;
+          if (newCharPos === correctCount && correctCount < expectedText.length && key === expectedText[correctCount]) {
+            correctCount++;
+          }
+        }
+
+        redrawMultiLineCodeBlock(allLines, currentLineIndex, completedResults, inputBuffer);
+      }
+    };
+
+    const handleKeypress = (chunk: Buffer) => {
+      const data = chunk.toString();
+      for (const char of data) {
+        if (escapeBuffer.length > 0) {
+          escapeBuffer += char;
+          if (escapeBuffer.length >= 3) {
+            if (escapeTimeout) clearTimeout(escapeTimeout);
+            processKey(escapeBuffer);
+            escapeBuffer = '';
+          }
+        } else if (char === '\x1b') {
+          escapeBuffer = char;
+          if (escapeTimeout) clearTimeout(escapeTimeout);
+          escapeTimeout = setTimeout(() => {
+            if (escapeBuffer === '\x1b') processKey('\x1b');
+            escapeBuffer = '';
+          }, 50);
+        } else {
+          processKey(char);
+        }
+      }
+    };
+
+    process.stdin.on('data', handleKeypress);
+  });
 }
 
 /**

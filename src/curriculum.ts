@@ -241,7 +241,8 @@ Generate segments that specifically build this project, not generic exercises. E
     };
   } catch (error: any) {
     // Fallback to basic curriculum if generation fails
-    console.error('Curriculum generation failed, using fallback:', error.message);
+    // Note: Don't use console.error here as it interferes with loading spinner display
+    // The fallback curriculum will be used silently
     return createFallbackCurriculum(curriculumId, projectName, projectGoal, workingDirectory);
   }
 }
