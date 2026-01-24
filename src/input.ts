@@ -459,8 +459,8 @@ export function createMultiQuestionWizard(
             for (let i = 0; i < linesToClear; i++) {
               process.stdout.write('\r\x1B[K\n');
             }
-            // Move up by the ACTUAL lines to draw (not the clear buffer)
-            process.stdout.write(`\x1B[${questionLines}A`);
+            // Move back up by the same amount we cleared
+            process.stdout.write(`\x1B[${linesToClear}A`);
             drawQuestion();
           }
         }
@@ -501,7 +501,8 @@ export function createMultiQuestionWizard(
               for (let i = 0; i < linesToClear; i++) {
                 process.stdout.write('\r\x1B[K\n');
               }
-              process.stdout.write(`\x1B[${summaryLines}A`);
+              // Move back up by the same amount we cleared
+              process.stdout.write(`\x1B[${linesToClear}A`);
               drawSummary();
             }
           }
@@ -554,8 +555,8 @@ export function createMultiQuestionWizard(
           for (let i = 0; i < linesToClear; i++) {
             process.stdout.write('\r\x1B[K\n');
           }
-          // Move up by the ACTUAL lines to draw (not the clear buffer)
-          process.stdout.write(`\x1B[${newLines}A`);
+          // Move back up by the same amount we cleared
+          process.stdout.write(`\x1B[${linesToClear}A`);
           drawQuestion();
         }
       } else if (key === '\x1b[C' || key === '\x1bOC') {
@@ -570,8 +571,8 @@ export function createMultiQuestionWizard(
           for (let i = 0; i < linesToClear; i++) {
             process.stdout.write('\r\x1B[K\n');
           }
-          // Move up by the ACTUAL lines to draw (not the clear buffer)
-          process.stdout.write(`\x1B[${newLines}A`);
+          // Move back up by the same amount we cleared
+          process.stdout.write(`\x1B[${linesToClear}A`);
           drawQuestion();
         }
       } else if (key.length === 1 && key >= ' ' && key <= '~') {
@@ -609,8 +610,8 @@ export function createMultiQuestionWizard(
           for (let i = 0; i < linesToClear; i++) {
             process.stdout.write('\r\x1B[K\n');
           }
-          // Move up by the ACTUAL lines to draw (not the clear buffer)
-          process.stdout.write(`\x1B[${newLines}A`);
+          // Move back up by the same amount we cleared
+          process.stdout.write(`\x1B[${linesToClear}A`);
           drawQuestion();
         } else {
           // Last question - show summary
@@ -622,8 +623,8 @@ export function createMultiQuestionWizard(
           for (let i = 0; i < linesToClear; i++) {
             process.stdout.write('\r\x1B[K\n');
           }
-          // Move up by the ACTUAL lines to draw (not the clear buffer)
-          process.stdout.write(`\x1B[${summaryLines}A`);
+          // Move back up by the same amount we cleared
+          process.stdout.write(`\x1B[${linesToClear}A`);
 
           showingSummary = true;
           summarySelectedIndex = questions.length; // Default to Submit
