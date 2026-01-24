@@ -109,6 +109,8 @@ RULES:
 - First segment MUST start with "mkdir -p src" to create the directory
 - Use heredoc syntax for file creation: cat > filename << 'EOF' ... EOF
 - Include the complete sequence: mkdir, then cat with heredoc for each file
+- CRITICAL: The goldenCode heredoc content must be ACTUAL EXECUTABLE CODE, not comments describing what code should be there. Users will type this code character-by-character. Include real TypeScript code like: console.log('Hello'); or function greet() { ... }
+- Do NOT put comments like "// add your code here" or "// file contents" - put the actual working code the user should type
 
 OUTPUT FORMAT (JSON only, no markdown):
 {
@@ -117,7 +119,7 @@ OUTPUT FORMAT (JSON only, no markdown):
       "type": "build",
       "title": "Short title",
       "targetFile": "src/filename.ts",
-      "goldenCode": "mkdir -p src\\ncat > src/filename.ts << 'EOF'\\n// file contents here\\nEOF",
+      "goldenCode": "mkdir -p src\\ncat > src/filename.ts << 'EOF'\\nconsole.log('Hello, world!');\\nEOF",
       "explanation": "Why we're doing this (1 sentence)",
       "engineeringFocus": "The engineering principle being taught",
       "checkpoints": ["what user should accomplish"]
@@ -256,7 +258,7 @@ function createFallbackCurriculum(
   const segments: Segment[] = [
     createBuildSegment({
       title: 'Project Setup',
-      goldenCode: `// ${projectName}\n// ${projectGoal}\n\nconsole.log('Starting ${projectName}...');`,
+      goldenCode: `mkdir -p src\ncat > src/index.ts << 'EOF'\nconsole.log('Starting ${projectName}...');\nEOF`,
       targetFile: 'src/index.ts',
       explanation: 'Every project starts with a clear entry point.',
       engineeringFocus: 'Project organization',
@@ -264,7 +266,7 @@ function createFallbackCurriculum(
     }),
     createBuildSegment({
       title: 'Core Logic',
-      goldenCode: `// Add your main logic here\nexport function main(): void {\n  console.log('${projectName} is running');\n}\n\nmain();`,
+      goldenCode: `cat > src/index.ts << 'EOF'\nexport function main(): void {\n  console.log('${projectName} is running');\n}\n\nmain();\nEOF`,
       targetFile: 'src/index.ts',
       explanation: 'Separate your main logic into a function.',
       engineeringFocus: 'Function organization',

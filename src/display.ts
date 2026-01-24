@@ -898,6 +898,7 @@ export function redrawTyperShark(expected: string, input: string, correctCount: 
   if (!process.stdout.isTTY) return;
 
   // Move up 2 lines (from input line, past top bar, to target line)
+  // Use \x1B[2A (cursor up) which doesn't cause scrolling issues
   process.stdout.write('\x1B[2A\r\x1B[K');
 
   // Draw target
@@ -912,19 +913,20 @@ export function redrawTyperShark(expected: string, input: string, correctCount: 
   process.stdout.write(targetOutput);
 
   // Move down to top bar, redraw it
-  process.stdout.write('\n\r\x1B[K');
+  // Use \x1B[1B (cursor down) instead of \n to avoid terminal scrolling
+  process.stdout.write('\x1B[1B\r\x1B[K');
   process.stdout.write(drawBar());
 
   // Move down, clear, draw input
-  process.stdout.write('\n\r\x1B[K');
+  process.stdout.write('\x1B[1B\r\x1B[K');
   process.stdout.write(colors.dim('› ') + input);
 
   // Move down, redraw bottom bar
-  process.stdout.write('\n\r\x1B[K');
+  process.stdout.write('\x1B[1B\r\x1B[K');
   process.stdout.write(drawBar());
 
   // Move down, redraw mode footer
-  process.stdout.write('\n\r\x1B[K');
+  process.stdout.write('\x1B[1B\r\x1B[K');
   displayModeFooterInline();
 
   // Move cursor back up to input line
@@ -959,6 +961,16 @@ export function clearForTyperShark(linesToClear: number = 0): void {
  *   mode footer
  */
 export function initTyperSharkDisplay(expected: string, explanation?: string): void {
+  // Add buffer lines to ensure we have space at terminal bottom
+  // This prevents scroll-induced cursor positioning issues during redraw
+  // The display needs ~6 lines, so we ensure at least that much space
+  const bufferLines = 6;
+  for (let i = 0; i < bufferLines; i++) {
+    console.log();
+  }
+  // Move back up to where we want to start the display
+  process.stdout.write(`\x1B[${bufferLines}A`);
+
   console.log();
   if (explanation) {
     console.log(colors.dim(`  // ${explanation}`));
@@ -1065,6 +1077,15 @@ export function initTerminalMultiLine(
     clearForTyperShark(linesToClear);
   }
 
+  // Add buffer lines to ensure we have space at terminal bottom
+  // This prevents scroll-induced cursor positioning issues during redraw
+  const bufferLines = expectedLines.length + 8;
+  for (let i = 0; i < bufferLines; i++) {
+    console.log();
+  }
+  // Move back up to where we want to start the display
+  process.stdout.write(`\x1B[${bufferLines}A`);
+
   // Show brief explanation if provided
   if (explanation) {
     console.log(colors.dim(explanation));
@@ -1138,14 +1159,15 @@ export function redrawTerminalMultiLine(
   process.stdout.write(`\x1B[${totalLinesAboveCursor}A`);
 
   // Redraw explanation if present
+  // Use \x1B[1B (cursor down) instead of \n to avoid terminal scrolling
   if (hasExplanation) {
-    process.stdout.write('\r\x1B[K\n');
+    process.stdout.write('\r\x1B[K\x1B[1B');
   }
 
   // "Expected:" label
   process.stdout.write('\r\x1B[K');
   process.stdout.write(colors.dim('  Expected:'));
-  process.stdout.write('\n');
+  process.stdout.write('\x1B[1B');
 
   // Redraw expected code with green progress
   let charIndex = 0;
@@ -1162,7 +1184,7 @@ export function redrawTerminalMultiLine(
       }
       charIndex++;
     }
-    process.stdout.write('\n');
+    process.stdout.write('\x1B[1B');
 
     // Account for newline character in expected text (except after last line)
     if (lineIdx < expectedLines.length - 1) {
@@ -1173,26 +1195,26 @@ export function redrawTerminalMultiLine(
   // Top gray bar
   process.stdout.write('\r\x1B[K');
   process.stdout.write(drawBar());
-  process.stdout.write('\n');
+  process.stdout.write('\x1B[1B');
 
   // Redraw completed input lines
   for (let i = 0; i < inputLines.length; i++) {
     process.stdout.write('\r\x1B[K');
     const prompt = i === 0 ? colors.dim('› ') : colors.dim('> ');
     process.stdout.write(prompt + inputLines[i]);
-    process.stdout.write('\n');
+    process.stdout.write('\x1B[1B');
   }
 
   // Current input line
   process.stdout.write('\r\x1B[K');
   const currentPrompt = inputLines.length === 0 ? colors.dim('› ') : colors.dim('> ');
   process.stdout.write(currentPrompt + currentLineInput);
-  process.stdout.write('\n');
+  process.stdout.write('\x1B[1B');
 
   // Bottom gray bar
   process.stdout.write('\r\x1B[K');
   process.stdout.write(drawBar());
-  process.stdout.write('\n');
+  process.stdout.write('\x1B[1B');
 
   // Mode footer
   process.stdout.write('\r\x1B[K');
