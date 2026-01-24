@@ -267,20 +267,20 @@ export function createMultiQuestionWizard(
       const num = `${otherIdx + 1}.`;
       const prefix = `› ${num} `; // Always selected when in custom mode
 
-      // Cursor is at bottom after drawQuestion. Move up 2 lines (nav hint + bottom bar)
-      process.stdout.write('\x1B[2A');
+      // Cursor is on line AFTER bottom bar (due to console.log in drawQuestion)
+      // Move up 3 lines: after-bar -> bar -> nav hint -> Other line
+      process.stdout.write('\x1B[3A');
 
       // Clear and redraw the "Other" line
       process.stdout.write('\r\x1B[K');
       process.stdout.write(colors.primary(prefix) + chalk.white(customInputValue));
-      console.log();
 
-      // Redraw navigation hint
-      process.stdout.write('\r\x1B[K');
-      console.log(colors.dim('  Type your answer • Enter submit • Esc cancel'));
+      // Move down to nav hint line and redraw it
+      process.stdout.write('\x1B[1B\r\x1B[K');
+      process.stdout.write(colors.dim('  Type your answer • Enter submit • Esc cancel'));
 
-      // Bottom bar already drawn, just move to end
-      // (cursor is now at start of bottom bar line, which is correct)
+      // Move down past bottom bar to the line after it (where cursor should be)
+      process.stdout.write('\x1B[2B');
     };
 
     const drawSummary = (clearFirst: boolean = false) => {
@@ -463,6 +463,13 @@ export function createMultiQuestionWizard(
 
       // Custom input mode - handle typing directly on the "Other" line
       if (customInputMode) {
+        // Ignore arrow keys in custom input mode (consume them, don't pass through)
+        if (key === '\x1b[A' || key === '\x1bOA' ||  // Up
+            key === '\x1b[B' || key === '\x1bOB' ||  // Down
+            key === '\x1b[C' || key === '\x1bOC' ||  // Right
+            key === '\x1b[D' || key === '\x1bOD') {  // Left
+          return;
+        }
         if (key === '\r' || key === '\n') {
           // Submit custom input
           const trimmedValue = customInputValue.trim();
