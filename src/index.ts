@@ -354,10 +354,47 @@ async function startCommand(projectDir: string | undefined): Promise<void> {
   const question = (prompt: string): Promise<string> => {
     return new Promise((resolve) => {
       displayQuestionPrompt(prompt);
-      rl.once("line", (answer) => {
-        closeQuestionPrompt(prompt, answer);
-        resolve(answer);
-      });
+
+      // Use raw mode instead of readline to preserve styling
+      process.stdin.setRawMode(true);
+      process.stdin.resume();
+
+      let inputBuffer = '';
+
+      const handleInput = (chunk: Buffer) => {
+        const char = chunk.toString();
+
+        if (char === '\x03') { // Ctrl+C
+          process.stdin.setRawMode(false);
+          process.stdin.removeListener('data', handleInput);
+          process.exit(0);
+        }
+
+        if (char === '\r' || char === '\n') { // Enter
+          process.stdin.setRawMode(false);
+          process.stdin.removeListener('data', handleInput);
+          closeQuestionPrompt(prompt, inputBuffer);
+          resolve(inputBuffer);
+          return;
+        }
+
+        if (char === '\x7f' || char === '\b') { // Backspace
+          if (inputBuffer.length > 0) {
+            inputBuffer = inputBuffer.slice(0, -1);
+            // Move cursor back, clear, stay there
+            process.stdout.write('\b \b');
+          }
+          return;
+        }
+
+        // Regular character
+        if (char.length === 1 && char >= ' ' && char <= '~') {
+          inputBuffer += char;
+          process.stdout.write(char);
+        }
+      };
+
+      process.stdin.on('data', handleInput);
     });
   };
 

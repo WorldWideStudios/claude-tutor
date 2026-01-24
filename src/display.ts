@@ -728,6 +728,9 @@ export function displayQuestionPrompt(question: string): void {
   // Move cursor back up to input line (from after bottom bar to input line)
   // Position cursor after the green caret
   process.stdout.write('\x1B[2A\x1B[3G');
+
+  // Show cursor for typing (needed for raw mode input)
+  process.stdout.write('\x1B[?25h');
 }
 
 /**

@@ -255,9 +255,6 @@ export function createMultiQuestionWizard(
       process.stdout.write('\r\x1B[K');
       console.log(drawBar());
 
-      // Clear the line below the bar to prevent terminal artifacts
-      process.stdout.write('\r\x1B[K');
-
       // Update the tracked display line count after drawing
       currentDisplayedLines = getQuestionDisplayLines(currentQuestionIndex);
     };
@@ -345,9 +342,6 @@ export function createMultiQuestionWizard(
       // Bottom bar
       process.stdout.write('\r\x1B[K');
       console.log(drawBar());
-
-      // Clear the line below the bar to prevent terminal artifacts
-      process.stdout.write('\r\x1B[K');
 
       // Update tracked display lines for summary
       currentDisplayedLines = getSummaryDisplayLines();
