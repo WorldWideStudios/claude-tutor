@@ -349,33 +349,23 @@ export function createMultiQuestionWizard(
 
     const redrawQuestion = () => {
       // Use tracked display lines (what's actually on screen) for cursor movement
-      // Add 1 extra line to clear to handle any off-by-one issues from cursor positioning
-      const linesToClear = (currentDisplayedLines || getQuestionDisplayLines(currentQuestionIndex)) + 1;
+      const linesToClear = currentDisplayedLines || getQuestionDisplayLines(currentQuestionIndex);
 
-      // Move up to top of display (go one extra to catch any stray content)
+      // Move up to top of display
       process.stdout.write(`\x1B[${linesToClear}A`);
-      // Clear all lines
-      for (let i = 0; i < linesToClear; i++) {
-        process.stdout.write('\r\x1B[K\n');
-      }
-      // Move back up by the same amount we cleared
-      process.stdout.write(`\x1B[${linesToClear}A`);
+      // Clear from cursor to end of screen (more reliable than line-by-line)
+      process.stdout.write('\x1B[J');
       drawQuestion();
     };
 
     const redrawSummary = () => {
       // Use tracked display lines for cursor movement
-      // Add 1 extra line to clear to handle any off-by-one issues
-      const linesToClear = (currentDisplayedLines || getSummaryDisplayLines()) + 1;
+      const linesToClear = currentDisplayedLines || getSummaryDisplayLines();
 
-      // Move up to top of display (go one extra to catch any stray content)
+      // Move up to top of display
       process.stdout.write(`\x1B[${linesToClear}A`);
-      // Clear all lines
-      for (let i = 0; i < linesToClear; i++) {
-        process.stdout.write('\r\x1B[K\n');
-      }
-      // Move back up by the same amount we cleared
-      process.stdout.write(`\x1B[${linesToClear}A`);
+      // Clear from cursor to end of screen (more reliable than line-by-line)
+      process.stdout.write('\x1B[J');
       drawSummary();
     };
 

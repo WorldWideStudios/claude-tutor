@@ -709,16 +709,10 @@ export function displayQuestionPrompt(question: string): void {
   const questionLineCount = getDisplayLineCount(cleanQuestion);
   questionPromptLines = 1 + questionLineCount + 1 + 1; // top bar + question + input + bottom bar
 
-  // Add buffer lines BEFORE drawing to prevent terminal scroll issues
-  // Use more buffer to ensure we have room
-  const bufferLines = questionPromptLines + 5;
-  for (let i = 0; i < bufferLines; i++) {
-    process.stdout.write('\n');
-  }
-  // Move cursor back up to start of buffer area
-  process.stdout.write(`\x1B[${bufferLines}A`);
+  // Ensure we start on a fresh line
+  process.stdout.write('\n');
 
-  // Draw each element with explicit control
+  // Draw each element directly (no buffer lines needed - we're after displayWelcome which cleared screen)
   // Top bar
   process.stdout.write('\r\x1B[K' + drawBar() + '\n');
   // Question text
@@ -749,14 +743,13 @@ export function closeQuestionPrompt(question: string, answer: string): void {
   // Strip any HTML tags from the question
   const cleanQuestion = stripHtmlTags(question);
 
-  // Move cursor up to clear the entry box (calculated lines from displayQuestionPrompt)
-  process.stdout.write(`\x1B[${questionPromptLines}A`);
+  // Cursor is on the input line (line 2 of the 4-line display: top bar, question, input, bottom bar)
+  // Move up to the top bar (2 lines up from input line)
+  const linesAboveInput = 2; // top bar + question
+  process.stdout.write(`\x1B[${linesAboveInput}A`);
 
-  // Clear all the lines we used
-  for (let i = 0; i < questionPromptLines; i++) {
-    process.stdout.write('\r\x1B[K\n');
-  }
-  process.stdout.write(`\x1B[${questionPromptLines}A`);
+  // Clear from cursor to end of screen
+  process.stdout.write('\x1B[J');
 
   // Redraw as clean log entry (condensed - no bars)
   const termWidth = process.stdout.columns || 80;
