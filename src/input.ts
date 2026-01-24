@@ -357,33 +357,32 @@ export function createMultiQuestionWizard(
       // Use tracked display lines (what's actually on screen) for cursor movement
       // This is crucial when transitioning between modes (e.g., entering custom input mode)
       // where "Other (type your own)" has different length than "Other: █"
-      const linesToClear = currentDisplayedLines || getQuestionDisplayLines(currentQuestionIndex);
+      const linesToClear = (currentDisplayedLines || getQuestionDisplayLines(currentQuestionIndex)) + 1;
       const newLines = getQuestionDisplayLines(currentQuestionIndex);
 
-      // Move up to top of OLD display (using tracked lines, not recalculated)
+      // Move up to top of display (+1 for the cleared line below bar)
       process.stdout.write(`\x1B[${linesToClear}A`);
-      // Clear enough lines to cover both old and new display
-      for (let i = 0; i < Math.max(linesToClear, newLines); i++) {
+      // Clear all lines including the one below the bar
+      for (let i = 0; i < linesToClear; i++) {
         process.stdout.write('\r\x1B[K\n');
       }
-      // Move back up by NEW line count to position for drawing
-      process.stdout.write(`\x1B[${Math.max(linesToClear, newLines)}A`);
+      // Move back up by the same amount we cleared
+      process.stdout.write(`\x1B[${linesToClear}A`);
       drawQuestion();
     };
 
     const redrawSummary = () => {
-      // Use tracked display lines for cursor movement
-      const linesToClear = currentDisplayedLines || getSummaryDisplayLines();
-      const newLines = getSummaryDisplayLines();
+      // Use tracked display lines for cursor movement (+1 for cleared line below bar)
+      const linesToClear = (currentDisplayedLines || getSummaryDisplayLines()) + 1;
 
-      // Move up to top of OLD display
+      // Move up to top of display
       process.stdout.write(`\x1B[${linesToClear}A`);
-      // Clear enough lines to cover both old and new display
-      for (let i = 0; i < Math.max(linesToClear, newLines); i++) {
+      // Clear all lines including the one below the bar
+      for (let i = 0; i < linesToClear; i++) {
         process.stdout.write('\r\x1B[K\n');
       }
-      // Move back up by new line count
-      process.stdout.write(`\x1B[${Math.max(linesToClear, newLines)}A`);
+      // Move back up by the same amount we cleared
+      process.stdout.write(`\x1B[${linesToClear}A`);
       drawSummary();
     };
 
