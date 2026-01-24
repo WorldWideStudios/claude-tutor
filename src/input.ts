@@ -255,6 +255,9 @@ export function createMultiQuestionWizard(
       process.stdout.write('\r\x1B[K');
       console.log(drawBar());
 
+      // Clear the line below the bar to prevent terminal artifacts
+      process.stdout.write('\r\x1B[K');
+
       // Update the tracked display line count after drawing
       currentDisplayedLines = getQuestionDisplayLines(currentQuestionIndex);
     };
@@ -279,8 +282,8 @@ export function createMultiQuestionWizard(
       process.stdout.write('\x1B[1B\r\x1B[K');
       process.stdout.write(colors.dim('  Type your answer • Enter submit • Esc cancel'));
 
-      // Move down past bottom bar to the line after it (where cursor should be)
-      process.stdout.write('\x1B[2B');
+      // Move down past bottom bar to the line after it and clear it
+      process.stdout.write('\x1B[2B\r\x1B[K');
     };
 
     const drawSummary = (clearFirst: boolean = false) => {
@@ -342,6 +345,9 @@ export function createMultiQuestionWizard(
       // Bottom bar
       process.stdout.write('\r\x1B[K');
       console.log(drawBar());
+
+      // Clear the line below the bar to prevent terminal artifacts
+      process.stdout.write('\r\x1B[K');
 
       // Update tracked display lines for summary
       currentDisplayedLines = getSummaryDisplayLines();
