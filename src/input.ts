@@ -202,9 +202,10 @@ export function createMultiQuestionWizard(
         const inCustomMode = customInputMode[currentQuestionIndex];
 
         let displayLabel = opt.label;
+        let typedValue = '';
         if (isOtherOption && inCustomMode) {
           // Replace "Other (type your own)" with actual typed value
-          const typedValue = customInputValues[currentQuestionIndex];
+          typedValue = customInputValues[currentQuestionIndex];
           displayLabel = typedValue ? `Other: ${typedValue}█` : 'Other: █';
         }
 
@@ -215,20 +216,28 @@ export function createMultiQuestionWizard(
         wrappedLines.forEach((line, lineIdx) => {
           process.stdout.write('\r\x1B[K');
           if (lineIdx === 0) {
-            const prefixAndLabel = prefix + displayLabel;
-            if (i === selectedIdx) {
-              if (line.length <= prefixAndLabel.length) {
-                process.stdout.write(colors.primary(line));
-              } else {
-                process.stdout.write(colors.primary(prefixAndLabel));
-                process.stdout.write(chalk.white(line.slice(prefixAndLabel.length)));
-              }
+            // Special handling for "Other" in custom input mode: only "Other:" is green
+            if (isOtherOption && inCustomMode && i === selectedIdx) {
+              const greenPart = prefix + 'Other: ';
+              const whitePart = typedValue + '█';
+              process.stdout.write(colors.primary(greenPart));
+              process.stdout.write(chalk.white(whitePart));
             } else {
-              if (line.length <= prefixAndLabel.length) {
-                process.stdout.write(colors.dim(line));
+              const prefixAndLabel = prefix + displayLabel;
+              if (i === selectedIdx) {
+                if (line.length <= prefixAndLabel.length) {
+                  process.stdout.write(colors.primary(line));
+                } else {
+                  process.stdout.write(colors.primary(prefixAndLabel));
+                  process.stdout.write(chalk.white(line.slice(prefixAndLabel.length)));
+                }
               } else {
-                process.stdout.write(colors.dim(prefixAndLabel));
-                process.stdout.write(chalk.white(line.slice(prefixAndLabel.length)));
+                if (line.length <= prefixAndLabel.length) {
+                  process.stdout.write(colors.dim(line));
+                } else {
+                  process.stdout.write(colors.dim(prefixAndLabel));
+                  process.stdout.write(chalk.white(line.slice(prefixAndLabel.length)));
+                }
               }
             }
           } else {
@@ -437,12 +446,15 @@ export function createMultiQuestionWizard(
           // Submit custom input
           const customValue = customInputValues[currentQuestionIndex].trim();
           if (customValue) {
+            // IMPORTANT: Calculate prevLines BEFORE changing customInputMode
+            // because line count depends on custom mode state
+            const prevLines = getQuestionDisplayLines(currentQuestionIndex);
+
             answers[currentQuestionIndex] = customValue;
             customInputMode[currentQuestionIndex] = false;
 
             if (currentQuestionIndex < questions.length - 1) {
               // Move to next question
-              const prevLines = getQuestionDisplayLines(currentQuestionIndex);
               currentQuestionIndex++;
               const newLines = getQuestionDisplayLines(currentQuestionIndex);
               const linesToClear = Math.max(prevLines, newLines) + 2;
@@ -454,9 +466,8 @@ export function createMultiQuestionWizard(
               drawQuestion();
             } else {
               // Last question - show summary
-              const questionLines = getQuestionDisplayLines(currentQuestionIndex);
               const summaryLines = getSummaryDisplayLines();
-              const linesToClear = Math.max(questionLines, summaryLines) + 2;
+              const linesToClear = Math.max(prevLines, summaryLines) + 2;
               process.stdout.write(`\x1B[${linesToClear}A`);
               for (let i = 0; i < linesToClear; i++) {
                 process.stdout.write('\r\x1B[K\n');
