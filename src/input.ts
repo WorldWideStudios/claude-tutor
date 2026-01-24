@@ -1930,8 +1930,25 @@ function createMultiLineLineInput(
         return;
       }
 
-      // Enter - always submit line (let Claude catch any errors)
+      // Enter - submit input (only if correct in tutor mode, or if it's a question)
       if (key === '\r' || key === '\n') {
+        // In tutor mode, require exact match before allowing Enter (unless it's a question)
+        if (isTutorMode()) {
+          // Check if input matches expected text exactly
+          if (inputBuffer !== expectedText) {
+            // Check if this looks like a natural language question
+            if (isNaturalLanguageQuestion(inputBuffer, expectedText)) {
+              // Allow questions through even if they don't match the code
+              cleanup();
+              resolve(inputBuffer);
+              return;
+            }
+            // Don't allow submission - just redraw to show current state
+            redrawMultiLineCodeBlock(allLines, currentLineIndex, completedResults, inputBuffer);
+            return;
+          }
+        }
+        // In block mode or when input is correct, allow submission
         cleanup();
         resolve(inputBuffer);
         return;
