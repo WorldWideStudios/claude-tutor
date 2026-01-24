@@ -360,20 +360,12 @@ async function startCommand(projectDir: string | undefined): Promise<void> {
     }
   }
 
-  // Get project details from user first
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
+  // Raw mode question function (no readline, preserves styling)
   const question = (prompt: string): Promise<string> => {
     return new Promise((resolve) => {
       displayQuestionPrompt(prompt);
 
-      // Pause readline to prevent it from also receiving input (causes double chars)
-      rl.pause();
-
-      // Use raw mode instead of readline to preserve styling
+      // Use raw mode for styled input (no readline interference)
       process.stdin.setRawMode(true);
       process.stdin.resume();
 
@@ -385,14 +377,12 @@ async function startCommand(projectDir: string | undefined): Promise<void> {
         if (char === '\x03') { // Ctrl+C
           process.stdin.setRawMode(false);
           process.stdin.removeListener('data', handleInput);
-          rl.resume();
           process.exit(0);
         }
 
         if (char === '\r' || char === '\n') { // Enter
           process.stdin.setRawMode(false);
           process.stdin.removeListener('data', handleInput);
-          rl.resume();
           closeQuestionPrompt(prompt, inputBuffer);
           resolve(inputBuffer);
           return;
@@ -444,7 +434,6 @@ async function startCommand(projectDir: string | undefined): Promise<void> {
     const projectName = await question(promptQuestion);
     if (!projectName.trim()) {
       displayError("Project name is required.");
-      rl.close();
       process.exit(1);
     }
 
@@ -452,6 +441,12 @@ async function startCommand(projectDir: string | undefined): Promise<void> {
     logInteraction("initial_question", {
       question_text: promptQuestion,
       answer_text: projectName.trim(),
+    });
+
+    // Now create readline for subsequent interactions (after raw mode input is done)
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
     });
 
     // Use dynamic questions based on project idea and backend context
