@@ -710,28 +710,30 @@ export function displayQuestionPrompt(question: string): void {
   questionPromptLines = 1 + questionLineCount + 1 + 1; // top bar + question + input + bottom bar
 
   // Add buffer lines BEFORE drawing to prevent terminal scroll issues
-  const bufferLines = questionPromptLines + 3;
+  // Use more buffer to ensure we have room
+  const bufferLines = questionPromptLines + 5;
   for (let i = 0; i < bufferLines; i++) {
-    console.log();
+    process.stdout.write('\n');
   }
+  // Move cursor back up to start of buffer area
   process.stdout.write(`\x1B[${bufferLines}A`);
 
-  // Top bar (clear line first to remove buffer artifacts)
-  process.stdout.write('\r\x1B[K');
-  console.log(drawBar());
+  // Draw each element with explicit control
+  // Top bar
+  process.stdout.write('\r\x1B[K' + drawBar() + '\n');
   // Question text
-  process.stdout.write('\r\x1B[K');
-  console.log(colors.text(cleanQuestion));
+  process.stdout.write('\r\x1B[K' + colors.text(cleanQuestion) + '\n');
   // Input line with green caret
-  process.stdout.write('\r\x1B[K');
-  console.log(colors.primary(symbols.arrow + ' '));
+  process.stdout.write('\r\x1B[K' + colors.primary(symbols.arrow + ' '));
+  // Save cursor position here (on the input line, after caret)
+  const cursorCol = 3; // "› " is 2 chars + 1 for position
+  process.stdout.write('\n');
   // Bottom bar
-  process.stdout.write('\r\x1B[K');
-  console.log(drawBar());
+  process.stdout.write('\r\x1B[K' + drawBar() + '\n');
 
   // Move cursor back up to input line (from after bottom bar to input line)
-  // Position cursor after the green caret
-  process.stdout.write('\x1B[2A\x1B[3G');
+  // We're 2 lines below the input line (bottom bar + newline after it)
+  process.stdout.write('\x1B[2A\x1B[' + cursorCol + 'G');
 
   // Show cursor for typing (needed for raw mode input)
   process.stdout.write('\x1B[?25h');

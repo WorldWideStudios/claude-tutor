@@ -349,9 +349,10 @@ export function createMultiQuestionWizard(
 
     const redrawQuestion = () => {
       // Use tracked display lines (what's actually on screen) for cursor movement
-      const linesToClear = currentDisplayedLines || getQuestionDisplayLines(currentQuestionIndex);
+      // Add 1 extra line to clear to handle any off-by-one issues from cursor positioning
+      const linesToClear = (currentDisplayedLines || getQuestionDisplayLines(currentQuestionIndex)) + 1;
 
-      // Move up to top of display
+      // Move up to top of display (go one extra to catch any stray content)
       process.stdout.write(`\x1B[${linesToClear}A`);
       // Clear all lines
       for (let i = 0; i < linesToClear; i++) {
@@ -364,9 +365,10 @@ export function createMultiQuestionWizard(
 
     const redrawSummary = () => {
       // Use tracked display lines for cursor movement
-      const linesToClear = currentDisplayedLines || getSummaryDisplayLines();
+      // Add 1 extra line to clear to handle any off-by-one issues
+      const linesToClear = (currentDisplayedLines || getSummaryDisplayLines()) + 1;
 
-      // Move up to top of display
+      // Move up to top of display (go one extra to catch any stray content)
       process.stdout.write(`\x1B[${linesToClear}A`);
       // Clear all lines
       for (let i = 0; i < linesToClear; i++) {
