@@ -12,7 +12,9 @@ export interface LogInteractionRequest {
     | "user_selection"
     | "llm_response"
     | "profile_created"
-    | "profile_generated";
+    | "profile_generated"
+    | "segment_completed"
+    | "curriculum_completed";
   question_text?: string;
   answer_text?: string;
   question_index?: number;

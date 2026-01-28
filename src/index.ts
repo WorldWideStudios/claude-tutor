@@ -19,8 +19,10 @@ if (fs.existsSync(envPath)) {
         const key = trimmed.slice(0, eqIndex).trim();
         let value = trimmed.slice(eqIndex + 1).trim();
         // Remove surrounding quotes if present
-        if ((value.startsWith('"') && value.endsWith('"')) ||
-            (value.startsWith("'") && value.endsWith("'"))) {
+        if (
+          (value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))
+        ) {
           value = value.slice(1, -1);
         }
         process.env[key] = value;
@@ -387,7 +389,7 @@ async function startCommand(projectDir: string | undefined): Promise<void> {
       process.stdin.setRawMode(true);
       process.stdin.resume();
 
-      let inputBuffer = '';
+      let inputBuffer = "";
       const termWidth = process.stdout.columns || 80;
       const prefixLen = 2; // "› " is 2 chars
       const inputWidth = termWidth - prefixLen;
@@ -407,31 +409,31 @@ async function startCommand(projectDir: string | undefined): Promise<void> {
         if (lineCount > 1) {
           process.stdout.write(`\x1B[${lineCount - 1}A`);
         }
-        process.stdout.write('\r');
+        process.stdout.write("\r");
 
         // Clear from cursor to end of screen (removes old input and bottom bar)
-        process.stdout.write('\x1B[J');
+        process.stdout.write("\x1B[J");
 
         // Draw input with proper wrapping
         const lines: string[] = [];
         for (let i = 0; i < inputBuffer.length; i += inputWidth) {
           lines.push(inputBuffer.slice(i, i + inputWidth));
         }
-        if (lines.length === 0) lines.push('');
+        if (lines.length === 0) lines.push("");
 
         lines.forEach((line, idx) => {
           if (idx === 0) {
-            process.stdout.write(colors.primary(symbols.arrow + ' ') + line);
+            process.stdout.write(colors.primary(symbols.arrow + " ") + line);
           } else {
-            process.stdout.write('\n  ' + line);
+            process.stdout.write("\n  " + line);
           }
         });
 
         // Draw bottom bar on new line
-        process.stdout.write('\n' + drawBar());
+        process.stdout.write("\n" + drawBar());
 
         // Move cursor back to end of input
-        process.stdout.write('\x1B[1A'); // Move up to input line
+        process.stdout.write("\x1B[1A"); // Move up to input line
         const lastLineLen = lines[lines.length - 1].length;
         const cursorCol = (lines.length === 1 ? prefixLen : 2) + lastLineLen;
         process.stdout.write(`\r\x1B[${cursorCol}C`);
@@ -440,21 +442,24 @@ async function startCommand(projectDir: string | undefined): Promise<void> {
       const handleInput = (chunk: Buffer) => {
         const char = chunk.toString();
 
-        if (char === '\x03') { // Ctrl+C
+        if (char === "\x03") {
+          // Ctrl+C
           process.stdin.setRawMode(false);
-          process.stdin.removeListener('data', handleInput);
+          process.stdin.removeListener("data", handleInput);
           process.exit(0);
         }
 
-        if (char === '\r' || char === '\n') { // Enter
+        if (char === "\r" || char === "\n") {
+          // Enter
           process.stdin.setRawMode(false);
-          process.stdin.removeListener('data', handleInput);
+          process.stdin.removeListener("data", handleInput);
           closeQuestionPrompt(prompt, inputBuffer);
           resolve(inputBuffer);
           return;
         }
 
-        if (char === '\x7f' || char === '\b') { // Backspace
+        if (char === "\x7f" || char === "\b") {
+          // Backspace
           if (inputBuffer.length > 0) {
             inputBuffer = inputBuffer.slice(0, -1);
             redrawInput();
@@ -463,13 +468,13 @@ async function startCommand(projectDir: string | undefined): Promise<void> {
         }
 
         // Regular character
-        if (char.length === 1 && char >= ' ' && char <= '~') {
+        if (char.length === 1 && char >= " " && char <= "~") {
           inputBuffer += char;
           redrawInput();
         }
       };
 
-      process.stdin.on('data', handleInput);
+      process.stdin.on("data", handleInput);
     });
   };
 
@@ -769,7 +774,10 @@ async function runTutorLoop(
     // Don't use Typer Shark for heredoc continuation lines
     // Lazy load golden code if not already loaded
     if (!currentExpectedCode && !heredocState.active && segment?.goldenCode) {
-      currentExpectedCode = goldenCodeToExtractedCode(segment.goldenCode, currentGoldenStepIndex);
+      currentExpectedCode = goldenCodeToExtractedCode(
+        segment.goldenCode,
+        currentGoldenStepIndex,
+      );
     }
     if (currentExpectedCode && !heredocState.active) {
       if (currentExpectedCode.isMultiLine && currentExpectedCode.lines) {
@@ -793,7 +801,11 @@ async function runTutorLoop(
         }
 
         // Advance to next golden step after successful multi-line input
-        if (segment && segment.goldenCode && hasMoreGoldenSteps(segment.goldenCode, currentGoldenStepIndex)) {
+        if (
+          segment &&
+          segment.goldenCode &&
+          hasMoreGoldenSteps(segment.goldenCode, currentGoldenStepIndex)
+        ) {
           currentGoldenStepIndex++;
           await updateProgress(curriculum.workingDirectory, {
             currentGoldenStep: currentGoldenStepIndex,
@@ -813,7 +825,11 @@ async function runTutorLoop(
         currentExpectedCode = null;
 
         // Advance to next golden step after successful single-line input
-        if (segment && segment.goldenCode && hasMoreGoldenSteps(segment.goldenCode, currentGoldenStepIndex)) {
+        if (
+          segment &&
+          segment.goldenCode &&
+          hasMoreGoldenSteps(segment.goldenCode, currentGoldenStepIndex)
+        ) {
           currentGoldenStepIndex++;
           await updateProgress(curriculum.workingDirectory, {
             currentGoldenStep: currentGoldenStepIndex,
@@ -1112,7 +1128,12 @@ async function runTutorLoop(
       messages = result.messages;
       // Note: Step advancement now happens in Typer Shark completion
       // Load next step from plan (if not already loaded)
-      if (isTutorMode() && segment && segment.goldenCode && !currentExpectedCode) {
+      if (
+        isTutorMode() &&
+        segment &&
+        segment.goldenCode &&
+        !currentExpectedCode
+      ) {
         currentExpectedCode = goldenCodeToExtractedCode(
           segment.goldenCode,
           currentGoldenStepIndex,
@@ -1134,8 +1155,28 @@ async function runTutorLoop(
         state.previousSegmentSummary = result.summary;
         await saveState(state);
 
+        // Log segment completion
+        await logInteraction("segment_completed", {
+          metadata: {
+            segmentId: completedSegmentId,
+            segmentTitle: segment!.title,
+            segmentIndex: state.currentSegmentIndex - 1,
+            summary: result.summary,
+            completedStepsCount: progress.completedSteps.length,
+          },
+        });
+
         // Check if curriculum is complete
         if (isCurriculumComplete(curriculum, state.completedSegments)) {
+          // Log curriculum completion
+          await logInteraction("curriculum_completed", {
+            metadata: {
+              curriculumId: curriculum.id,
+              projectName: curriculum.projectName,
+              totalSegments: curriculum.segments.length,
+              completedSegments: state.completedSegments,
+            },
+          });
           displayCurriculumComplete(curriculum);
           rl.close();
           return;
