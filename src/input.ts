@@ -1711,9 +1711,6 @@ export async function createMultiLineTyperSharkInput(
     return [];
   }
 
-  console.log("got here", lines);
-  throw new Error("broke");
-
   // Clear raw streamed output first
   if (linesToClear > 0) {
     // clearForTyperShark(linesToClear);
