@@ -649,4 +649,6 @@ When dropped into a new project:
 
 ---
 
-_This workflow is inspired by ai-dev-tasks, amp-skills, and the Ralph autonomous agent pattern._
+## Notes
+
+- use tsc not typecheck command

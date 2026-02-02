@@ -751,7 +751,6 @@ async function runTutorLoop(
   // Helper to get input - mode determines behavior
   const getInput = async (): Promise<string> => {
     // Check mode first - discuss and code modes use free-form input with shift+tab support
-
     // DISCUSS MODE: Free-form natural language input, send directly to LLM
     if (isDiscussMode() && !heredocState.active) {
       const result = await createFreeFormInput(rl, null);
@@ -774,17 +773,21 @@ async function runTutorLoop(
     // Don't use Typer Shark for heredoc continuation lines
     // Lazy load golden code if not already loaded
     if (!currentExpectedCode && !heredocState.active && segment?.goldenCode) {
+      console.log("setting here", currentGoldenStepIndex);
       currentExpectedCode = goldenCodeToExtractedCode(
         segment.goldenCode,
         currentGoldenStepIndex,
       );
+      // console.log("setting here", currentExpectedCode, );
     }
+
     if (currentExpectedCode && !heredocState.active) {
       if (currentExpectedCode.isMultiLine && currentExpectedCode.lines) {
         // Multi-line Typer Shark for heredocs with interleaved comments
         // Calculate lines to clear: each line has comment + code in the raw stream
         // Plus extra lines for the initial explanation text from Claude
         const linesToClear = currentExpectedCode.lines.length * 2 + 4;
+
         const results = await createMultiLineTyperSharkInput(
           rl,
           currentExpectedCode.lines,
@@ -860,7 +863,6 @@ async function runTutorLoop(
   while (true) {
     // Track mode before getting input to detect transitions
     const modeBeforeInput = getMode();
-
     const input = await getInput();
 
     // Detect mode change during input (user pressed Shift+Tab)
@@ -877,7 +879,6 @@ async function runTutorLoop(
         currentGoldenStepIndex,
       );
     }
-
     // Handle heredoc continuation
     if (heredocState.active) {
       if (input.trim() === heredocState.delimiter) {

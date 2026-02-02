@@ -144,11 +144,15 @@ async function handleToolCall(
   switch (toolName) {
     case "verify_syntax": {
       const result = verifySyntax(toolInput.filepath!, cwd);
+      // console.log("got here:", result);
       // Update progress if syntax check passed
       if (result.success) {
         try {
           await updateProgress(cwd, { syntaxVerified: true });
-          await addCompletedStep(cwd, `Syntax verified for ${toolInput.filepath}`);
+          await addCompletedStep(
+            cwd,
+            `Syntax verified for ${toolInput.filepath}`,
+          );
         } catch {
           // Ignore progress update errors
         }
@@ -168,7 +172,10 @@ async function handleToolCall(
       // Update progress - code was reviewed
       try {
         await updateProgress(cwd, { codeReviewed: true });
-        await addCompletedStep(cwd, `Code review completed (score: ${toolInput.readability_score}/10)`);
+        await addCompletedStep(
+          cwd,
+          `Code review completed (score: ${toolInput.readability_score}/10)`,
+        );
       } catch {
         // Ignore progress update errors
       }
