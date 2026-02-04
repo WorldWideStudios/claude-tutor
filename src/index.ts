@@ -60,6 +60,10 @@ program
     "Project directory (auto-creates if not specified)",
   )
   .option("-t, --token <apiKey>", "API token for authentication")
+  .option(
+    "--curriculum <path>",
+    "Path to curriculum JSON file (skips curriculum generation)",
+  )
   .action(async (options) => {
     // Check for updates and auto-update if available
     const needsRestart = await checkAndAutoUpdate();
@@ -80,7 +84,7 @@ program
       }
     }
     // Default action: start a new project
-    await startCommand(options.dir);
+    await startCommand(options.dir, options.curriculum);
   });
 
 program
@@ -110,13 +114,55 @@ program.parse();
 /**
  * Start a new tutoring project
  */
-async function startCommand(projectDir: string | undefined): Promise<void> {
+async function startCommand(
+  projectDir: string | undefined,
+  curriculumPath: string | undefined,
+): Promise<void> {
   // Check if config exists
   if (!(await configExists())) {
     console.error(
       'No configuration found. Please run "claude-tutor login" first.',
     );
     process.exit(1);
+  }
+
+  // Validate curriculum file if provided
+  let validatedCurriculumPath: string | undefined;
+  if (curriculumPath) {
+    const resolvedPath = path.resolve(process.cwd(), curriculumPath);
+
+    // Check if file exists
+    if (!fs.existsSync(resolvedPath)) {
+      console.error(`Curriculum file not found: ${resolvedPath}`);
+      process.exit(1);
+    }
+
+    // Try to parse and validate JSON
+    try {
+      const fileContent = fs.readFileSync(resolvedPath, "utf-8");
+      const curriculumData = JSON.parse(fileContent);
+
+      // Validate against schema
+      const { CurriculumSchema } = await import("./types.js");
+      const result = CurriculumSchema.safeParse(curriculumData);
+
+      if (!result.success) {
+        console.error("Invalid curriculum structure:");
+        result.error.issues.forEach((issue) => {
+          console.error(`  - ${issue.path.join(".")}: ${issue.message}`);
+        });
+        process.exit(1);
+      }
+
+      validatedCurriculumPath = resolvedPath;
+    } catch (error: any) {
+      if (error instanceof SyntaxError) {
+        console.error(`Invalid curriculum JSON: ${error.message}`);
+      } else {
+        console.error(`Failed to load curriculum: ${error.message}`);
+      }
+      process.exit(1);
+    }
   }
 
   displayWelcome();
@@ -135,7 +181,11 @@ async function startCommand(projectDir: string | undefined): Promise<void> {
     }
 
     // Set up new project
-    const { curriculum, state } = await setupNewProject(undefined, projectDir);
+    const { curriculum, state } = await setupNewProject(
+      undefined,
+      projectDir,
+      validatedCurriculumPath,
+    );
 
     // Start the tutor loop
     await runTutorLoop(curriculum, state);

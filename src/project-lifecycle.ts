@@ -141,10 +141,66 @@ export async function resumeExistingProject(
 export async function setupNewProject(
   projectName?: string,
   projectDir?: string,
+  curriculumPath?: string,
 ): Promise<{ curriculum: any; state: any }> {
   // Track whether user specified a directory or we should auto-create one
   const userSpecifiedDir = !!projectDir;
   let resolvedProjectDir = userSpecifiedDir ? path.resolve(projectDir) : "";
+
+  // If curriculum path is provided, load it directly and skip questions
+  if (curriculumPath) {
+    const loadedCurriculum = await loadCurriculum(curriculumPath);
+    if (!loadedCurriculum) {
+      throw new Error(`Failed to load curriculum from: ${curriculumPath}`);
+    }
+
+    // Notify backend of new session (silent failure)
+    try {
+      const { callInitEndpoint } = await import("./auth.js");
+      await callInitEndpoint();
+    } catch (error) {
+      // Silently fail - test curricula should work even if backend is unavailable
+    }
+
+    // Use curriculum's project name for directory if not specified
+    let finalProjectName = loadedCurriculum.projectName;
+
+    // Create project directory
+    if (!userSpecifiedDir) {
+      // Auto-create a safe project directory based on project name
+      resolvedProjectDir = createProjectDirectory(finalProjectName);
+    } else {
+      // User specified a directory - create it if needed
+      fs.mkdirSync(resolvedProjectDir, { recursive: true });
+    }
+    displayInfo(`Project folder: ${resolvedProjectDir}`);
+
+    // Update curriculum's working directory to match resolved project dir
+    loadedCurriculum.workingDirectory = resolvedProjectDir;
+
+    // Save curriculum to standard location for resume functionality
+    const savedCurriculumPath = await saveCurriculum(loadedCurriculum);
+
+    // Initialize Git (silent)
+    const gitResult = initGitRepo(resolvedProjectDir);
+    if (gitResult.success) {
+      displayGitInit();
+    }
+
+    // Create initial state
+    const state = createInitialState(savedCurriculumPath);
+    await saveState(state);
+
+    displayInfo(
+      `Loaded curriculum with ${loadedCurriculum.segments.length} segments for "${finalProjectName}".`,
+    );
+    newLine();
+
+    return { curriculum: loadedCurriculum, state };
+  }
+
+  // Original flow: questions and curriculum generation
+  // Track whether user specified a directory or we should auto-create one
 
   // Try to get personalized question and context from backend
   let promptQuestion = "What do you want to build?";
@@ -235,7 +291,7 @@ export async function setupNewProject(
     learnerProfile,
   );
   stopLoading();
-  const curriculumPath = await saveCurriculum(curriculum);
+  const savedCurriculumPath = await saveCurriculum(curriculum);
 
   // Initialize Git (silent)
   const gitResult = initGitRepo(resolvedProjectDir);
@@ -244,7 +300,7 @@ export async function setupNewProject(
   }
 
   // Create initial state
-  const state = createInitialState(curriculumPath);
+  const state = createInitialState(savedCurriculumPath);
   await saveState(state);
 
   displayInfo(

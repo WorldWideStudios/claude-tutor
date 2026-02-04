@@ -1,0 +1,25 @@
+{
+  "id": "quick-completion-test-001",
+  "projectName": "Quick Completion Test",
+  "projectGoal": "Test rapid segment completion workflow",
+  "workingDirectory": ".",
+  "segments": [
+    {
+      "id": "segment-hello-world-001",
+      "type": "build",
+      "title": "Create Hello World File",
+      "goldenCode": "mkdir -p hello-folder\necho \"hello world\" > hello-folder/hello.txt",
+      "targetFile": "hello-folder/hello.txt",
+      "explanation": "Create a simple hello world text file to verify basic file creation and git workflow.",
+      "engineeringFocus": "File system operations and version control basics",
+      "checkpoints": [
+        {
+          "id": "checkpoint-001",
+          "description": "Create hello-folder directory and hello.txt file with 'hello world' content",
+          "completed": false
+        }
+      ]
+    }
+  ],
+  "createdAt": "2026-02-04T00:00:00.000Z"
+}
