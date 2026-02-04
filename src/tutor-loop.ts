@@ -53,6 +53,7 @@ import { runPreflightChecks } from "./preflight.js";
 import { AgentCaller } from "./tutor-loop/agent-caller.js";
 import { GoldenCodeManager } from "./tutor-loop/GoldenCodeManager.js";
 import { CommandExecutor } from "./tutor-loop/CommandExecutor.js";
+import { InputHandler } from "./tutor-loop/InputHandler.js";
 
 /**
  * Main tutor conversation loop
@@ -128,6 +129,14 @@ export async function runTutorLoop(
     addCompletedStep,
   );
 
+  // Setup input handler
+  const inputHandler = new InputHandler(
+    rl,
+    goldenCodeManager,
+    commandExecutor,
+  );
+  inputHandler.setSegment(segment);
+
   // Setup SIGINT handler to save progress on Ctrl+C
   agentCaller.setupSigintHandler({
     saveState,
@@ -173,116 +182,16 @@ export async function runTutorLoop(
     process.exit(1);
   }
 
-  // Helper to get input - mode determines behavior
-  const getInput = async (): Promise<string> => {
-    // Check mode first - discuss and code modes use free-form input with shift+tab support
-    // DISCUSS MODE: Free-form natural language input, send directly to LLM
-    if (isDiscussMode() && !commandExecutor.isHeredocActive()) {
-      const result = await createFreeFormInput(rl, null);
-      goldenCodeManager.clear(); // Clear any expected code in discuss mode
-      return result;
-    }
-
-    // CODE MODE: Regular terminal behavior - show expected code as reference, type freely
-    if (isBlockMode() && !commandExecutor.isHeredocActive()) {
-      const currentExpectedCode = goldenCodeManager.getCurrentCode();
-      const expectedCodeStr =
-        currentExpectedCode?.isMultiLine && currentExpectedCode?.lines
-          ? currentExpectedCode.lines.map((l) => l.code).join("\n")
-          : currentExpectedCode?.code || null;
-      const result = await createFreeFormInput(rl, expectedCodeStr);
-      goldenCodeManager.clear(); // Clear expected code after input
-      return result;
-    }
-
-    // TUTOR MODE: Use Typer Shark for guided typing
-    // Don't use Typer Shark for heredoc continuation lines
-    // Lazy load golden code if not already loaded
-    let currentExpectedCode = goldenCodeManager.getCurrentCode();
-    if (
-      !currentExpectedCode &&
-      !commandExecutor.isHeredocActive() &&
-      segment?.goldenCode
-    ) {
-      currentExpectedCode = await goldenCodeManager.loadCurrentStep();
-    }
-
-    if (currentExpectedCode && !commandExecutor.isHeredocActive()) {
-      if (currentExpectedCode.isMultiLine && currentExpectedCode.lines) {
-        // Multi-line Typer Shark for heredocs with interleaved comments
-        // Calculate lines to clear: each line has comment + code in the raw stream
-        // Plus extra lines for the initial explanation text from Claude
-        const linesToClear = currentExpectedCode.lines.length * 2 + 4;
-
-        const results = await createMultiLineTyperSharkInput(
-          rl,
-          currentExpectedCode.lines,
-          currentExpectedCode.explanation || "Type each line below:",
-          linesToClear,
-        );
-        // Clear expected code after input
-        goldenCodeManager.clear();
-
-        // Check if user asked a question instead of typing code
-        if (results.length === 1 && results[0].startsWith("__QUESTION__:")) {
-          // Extract the question and return it as natural language
-          return results[0].slice("__QUESTION__:".length);
-        }
-
-        // Advance to next golden step after successful multi-line input
-        await goldenCodeManager.advance();
-
-        // Return all lines joined for command execution
-        return results.join("\n");
-      } else {
-        // Single-line Typer Shark input with real-time character feedback
-        const result = await createTyperSharkInput(
-          rl,
-          currentExpectedCode.code,
-          currentExpectedCode.explanation,
-        );
-        // Clear expected code after Typer Shark input (user typed something)
-        goldenCodeManager.clear();
-
-        // Advance to next golden step after successful single-line input
-        await goldenCodeManager.advance();
-
-        return result;
-      }
-    } else if (commandExecutor.isHeredocActive()) {
-      // Heredoc continuation - use regular readline
-      displayContinuationPrompt();
-      return new Promise((resolve) => {
-        rl.once("line", resolve);
-      });
-    } else {
-      // TUTOR MODE without expected code - use free-form input with hint
-      // This allows mode cycling and shows the user they can press Enter to continue
-      const result = await createFreeFormInput(
-        rl,
-        null,
-        "Press Enter to continue, or type a question",
-      );
-      return result;
-    }
-  };
-
   // Main conversation loop
   while (true) {
     // Track mode before getting input to detect transitions
     const modeBeforeInput = getMode();
-    const input = await getInput();
+    const input = await inputHandler.getInput();
 
     // Detect mode change during input (user pressed Shift+Tab)
     const modeAfterInput = getMode();
     if (modeBeforeInput !== modeAfterInput) {
-      if (isTutorMode() && segment?.goldenCode) {
-        // Reload current step from plan when switching to tutor mode
-        await goldenCodeManager.loadCurrentStep();
-      } else {
-        // Clear expected code when leaving tutor mode
-        goldenCodeManager.clear();
-      }
+      await inputHandler.handleModeTransition(modeBeforeInput, modeAfterInput);
     }
     // Handle heredoc continuation
     if (commandExecutor.isHeredocActive()) {
@@ -491,6 +400,9 @@ export async function runTutorLoop(
           return;
         }
 
+        // Update input handler with new segment
+        inputHandler.setSegment(segment);
+
         // Create new progress for the next segment
         progress = createInitialProgress(segment.id, state.currentSegmentIndex);
         await saveProgress(curriculum.workingDirectory, progress);
@@ -508,6 +420,9 @@ export async function runTutorLoop(
 
         // Display new segment header
         displaySegmentHeader(curriculum, segment, state.currentSegmentIndex);
+
+        // Update golden code manager with new segment
+        await goldenCodeManager.updateSegment(segment);
 
         // Kick off new segment
         const newResult = await agentCaller.callAgent("start", messages, {
