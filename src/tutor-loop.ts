@@ -49,80 +49,10 @@ import {
 } from "./display.js";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
 import type { Curriculum, TutorState, Progress } from "./types.js";
-import { execSync } from "child_process";
 import { runPreflightChecks } from "./preflight.js";
 import { AgentCaller } from "./tutor-loop/agent-caller.js";
 import { GoldenCodeManager } from "./tutor-loop/GoldenCodeManager.js";
-
-// Shell commands that should be executed directly
-const SHELL_COMMANDS = [
-  "mkdir",
-  "cat",
-  "echo",
-  "touch",
-  "rm",
-  "mv",
-  "cp",
-  "ls",
-  "cd",
-  "git",
-  "npm",
-  "npx",
-  "node",
-  "tsc",
-  "pwd",
-  "chmod",
-  "grep",
-  "find",
-];
-
-// Heredoc state tracking
-let heredocState: {
-  active: boolean;
-  delimiter: string;
-  command: string;
-  lines: string[];
-} = { active: false, delimiter: "", command: "", lines: [] };
-
-/**
- * Check if input looks like a shell command
- */
-function isShellCommand(input: string): boolean {
-  const firstWord = input.trim().split(/\s+/)[0];
-  return SHELL_COMMANDS.includes(firstWord);
-}
-
-/**
- * Check if command starts a heredoc
- */
-function startsHeredoc(input: string): {
-  isHeredoc: boolean;
-  delimiter: string;
-} {
-  const heredocMatch = input.match(/<<\s*['"]?(\w+)['"]?\s*$/);
-  if (heredocMatch) {
-    return { isHeredoc: true, delimiter: heredocMatch[1] };
-  }
-  return { isHeredoc: false, delimiter: "" };
-}
-
-/**
- * Execute a shell command and return the result
- */
-function executeCommand(
-  command: string,
-  cwd: string,
-): { success: boolean; output: string } {
-  try {
-    const output = execSync(command, { cwd, encoding: "utf-8" });
-    return { success: true, output: output.trim() };
-  } catch (error: any) {
-    return {
-      success: false,
-      output: error.stderr || error.stdout || error.message,
-    };
-  }
-}
+import { CommandExecutor } from "./tutor-loop/CommandExecutor.js";
 
 /**
  * Main tutor conversation loop
@@ -191,6 +121,13 @@ export async function runTutorLoop(
     progress.currentGoldenStep || 0,
   );
 
+  // Setup command executor
+  const commandExecutor = new CommandExecutor(
+    curriculum.workingDirectory,
+    updateProgress,
+    addCompletedStep,
+  );
+
   // Setup SIGINT handler to save progress on Ctrl+C
   agentCaller.setupSigintHandler({
     saveState,
@@ -240,14 +177,14 @@ export async function runTutorLoop(
   const getInput = async (): Promise<string> => {
     // Check mode first - discuss and code modes use free-form input with shift+tab support
     // DISCUSS MODE: Free-form natural language input, send directly to LLM
-    if (isDiscussMode() && !heredocState.active) {
+    if (isDiscussMode() && !commandExecutor.isHeredocActive()) {
       const result = await createFreeFormInput(rl, null);
       goldenCodeManager.clear(); // Clear any expected code in discuss mode
       return result;
     }
 
     // CODE MODE: Regular terminal behavior - show expected code as reference, type freely
-    if (isBlockMode() && !heredocState.active) {
+    if (isBlockMode() && !commandExecutor.isHeredocActive()) {
       const currentExpectedCode = goldenCodeManager.getCurrentCode();
       const expectedCodeStr =
         currentExpectedCode?.isMultiLine && currentExpectedCode?.lines
@@ -262,11 +199,11 @@ export async function runTutorLoop(
     // Don't use Typer Shark for heredoc continuation lines
     // Lazy load golden code if not already loaded
     let currentExpectedCode = goldenCodeManager.getCurrentCode();
-    if (!currentExpectedCode && !heredocState.active && segment?.goldenCode) {
+    if (!currentExpectedCode && !commandExecutor.isHeredocActive() && segment?.goldenCode) {
       currentExpectedCode = await goldenCodeManager.loadCurrentStep();
     }
 
-    if (currentExpectedCode && !heredocState.active) {
+    if (currentExpectedCode && !commandExecutor.isHeredocActive()) {
       if (currentExpectedCode.isMultiLine && currentExpectedCode.lines) {
         // Multi-line Typer Shark for heredocs with interleaved comments
         // Calculate lines to clear: each line has comment + code in the raw stream
@@ -308,7 +245,7 @@ export async function runTutorLoop(
 
         return result;
       }
-    } else if (heredocState.active) {
+    } else if (commandExecutor.isHeredocActive()) {
       // Heredoc continuation - use regular readline
       displayContinuationPrompt();
       return new Promise((resolve) => {
@@ -344,75 +281,49 @@ export async function runTutorLoop(
       }
     }
     // Handle heredoc continuation
-    if (heredocState.active) {
-      if (input.trim() === heredocState.delimiter) {
+    if (commandExecutor.isHeredocActive()) {
+      if (input.trim() === commandExecutor['heredocState'].delimiter) {
         // End of heredoc - execute full command
-        const fullCommand =
-          heredocState.command +
-          "\n" +
-          heredocState.lines.join("\n") +
-          "\n" +
-          heredocState.delimiter;
-        heredocState = { active: false, delimiter: "", command: "", lines: [] };
+        const cmdResult = await commandExecutor.completeHeredoc(input.trim());
+        
+        if (cmdResult) {
+          const fullCommand = commandExecutor.getHeredocCommand() + '\n' + input.trim();
+          displayCommand(fullCommand.split("\n")[0] + " ...", cmdResult.success);
+          displayCommandOutput(cmdResult.output);
 
-        const cmdResult = executeCommand(
-          fullCommand,
-          curriculum.workingDirectory,
-        );
-        displayCommand(fullCommand.split("\n")[0] + " ...", cmdResult.success);
-        displayCommandOutput(cmdResult.output);
+          // Send to Claude
+          const messageToSend = cmdResult.success
+            ? `I ran a heredoc command to create/modify a file:\n${fullCommand}\nResult: Success`
+            : `I ran a heredoc command:\n${fullCommand}\nError: ${cmdResult.output}`;
 
-        // Update progress - heredoc usually means file creation
-        if (cmdResult.success) {
-          const fileMatch = fullCommand.match(/cat\s*>\s*(\S+)/);
-          const fileName = fileMatch ? fileMatch[1] : "file";
-          await updateProgress(curriculum.workingDirectory, {
-            codeWritten: true,
-            lastUserAction: `Created file: ${fileName}`,
-          });
-          await addCompletedStep(
-            curriculum.workingDirectory,
-            `Created file: ${fileName}`,
-          );
-        }
-
-        // Send to Claude
-        const messageToSend = cmdResult.success
-          ? `I ran a heredoc command to create/modify a file:\n${fullCommand}\nResult: Success`
-          : `I ran a heredoc command:\n${fullCommand}\nError: ${cmdResult.output}`;
-
-        try {
-          const result = await agentCaller.callAgent(messageToSend, messages, {
-            curriculum,
-            state,
-            segment: segment!,
-            segmentIndex: state.currentSegmentIndex,
-            previousSummary,
-            onSegmentComplete: (summary) => {
-              previousSummary = summary;
-            },
-          });
-          messages = result.messages;
-          // Note: Step advancement now happens in Typer Shark completion
-          // Load next step from plan (if not already loaded)
-          if (!goldenCodeManager.getCurrentCode()) {
-            await goldenCodeManager.loadCurrentStep();
+          try {
+            const result = await agentCaller.callAgent(messageToSend, messages, {
+              curriculum,
+              state,
+              segment: segment!,
+              segmentIndex: state.currentSegmentIndex,
+              previousSummary,
+              onSegmentComplete: (summary) => {
+                previousSummary = summary;
+              },
+            });
+            messages = result.messages;
+            // Note: Step advancement now happens in Typer Shark completion
+            // Load next step from plan (if not already loaded)
+            if (!goldenCodeManager.getCurrentCode()) {
+              await goldenCodeManager.loadCurrentStep();
+            }
+            newLine();
+          } catch (error: any) {
+            // Reset heredoc state on error
+            commandExecutor.resetHeredoc();
+            displayError(error.message);
           }
-          newLine();
-        } catch (error: any) {
-          // Reset heredoc state on error
-          heredocState = {
-            active: false,
-            delimiter: "",
-            command: "",
-            lines: [],
-          };
-          displayError(error.message);
         }
         continue;
       } else {
         // Continue collecting heredoc lines
-        heredocState.lines.push(input);
+        commandExecutor.addHeredocLine(input);
         continue;
       }
     }
@@ -471,64 +382,28 @@ export async function runTutorLoop(
     logInteraction("user_selection", {
       answer_text: userInput,
       metadata: {
-        isShellCommand: isShellCommand(userInput),
+        isShellCommand: commandExecutor.isShellCommand(userInput),
         segmentIndex: state.currentSegmentIndex,
       },
     });
 
     // Check if it's a shell command
     let messageToSend = userInput;
-    if (isShellCommand(userInput)) {
+    if (commandExecutor.isShellCommand(userInput)) {
       // Check if it starts a heredoc
-      const { isHeredoc, delimiter } = startsHeredoc(userInput);
+      const { isHeredoc, delimiter } = commandExecutor.startsHeredoc(userInput);
       if (isHeredoc) {
         // Start heredoc mode
-        heredocState = {
-          active: true,
-          delimiter,
-          command: userInput,
-          lines: [],
-        };
+        commandExecutor.startHeredoc(userInput, delimiter);
         continue;
       }
 
       // Regular command - execute it
-      const cmdResult = executeCommand(userInput, curriculum.workingDirectory);
+      const cmdResult = await commandExecutor.executeAndTrack(userInput);
       displayCommand(userInput, cmdResult.success);
       displayCommandOutput(cmdResult.output);
 
-      // Update progress based on command type
-      if (cmdResult.success) {
-        const updates: Partial<Progress> = {
-          lastUserAction: userInput,
-        };
-
-        // Track specific actions
-        if (userInput.startsWith("cat >") || userInput.includes(">> ")) {
-          updates.codeWritten = true;
-          await addCompletedStep(
-            curriculum.workingDirectory,
-            `Created/modified file: ${userInput.split(/[>\s]+/)[1] || "file"}`,
-          );
-        } else if (userInput.startsWith("git commit")) {
-          updates.committed = true;
-          await addCompletedStep(
-            curriculum.workingDirectory,
-            "Committed code to git",
-          );
-        } else if (userInput.startsWith("mkdir")) {
-          await addCompletedStep(
-            curriculum.workingDirectory,
-            `Created directory: ${userInput}`,
-          );
-        }
-
-        await updateProgress(curriculum.workingDirectory, updates);
-      }
-
-      messageToSend = cmdResult.success
-        ? `I ran: ${userInput}\nOutput: ${cmdResult.output || "(success)"}`
-        : `I ran: ${userInput}\nError: ${cmdResult.output}`;
+      messageToSend = commandExecutor.getMessageForAgent(userInput, cmdResult);
     }
 
     try {
