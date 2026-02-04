@@ -65,6 +65,7 @@ export async function runTutorLoop(
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
+    terminal: false, // Prevent readline from attaching internal data listeners that interfere with raw mode
   });
 
   // Note: We intentionally do NOT call readline.emitKeypressEvents() here

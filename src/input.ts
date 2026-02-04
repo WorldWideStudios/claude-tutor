@@ -2368,6 +2368,11 @@ export function createFreeFormInput(
       currentDisplayLines = newTotalLines;
     };
 
+    // Pause readline interface to prevent its internal data listener from firing
+    // This fixes the character doubling bug where both readline and our raw mode handler
+    // would process the same keypress
+    rl.pause();
+
     // Enable raw mode
     process.stdin.setRawMode(true);
     process.stdin.resume();
@@ -2376,6 +2381,7 @@ export function createFreeFormInput(
       process.stdin.pause(); // Stop receiving data during transition
       process.stdin.setRawMode(false);
       process.stdin.removeListener("data", handleKeypress);
+      rl.resume(); // Re-enable readline interface for future use
       if (escapeTimeout) clearTimeout(escapeTimeout);
     };
 
