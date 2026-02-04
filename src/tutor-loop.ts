@@ -130,11 +130,7 @@ export async function runTutorLoop(
   );
 
   // Setup input handler
-  const inputHandler = new InputHandler(
-    rl,
-    goldenCodeManager,
-    commandExecutor,
-  );
+  const inputHandler = new InputHandler(rl, goldenCodeManager, commandExecutor);
   inputHandler.setSegment(segment);
 
   // Setup SIGINT handler to save progress on Ctrl+C

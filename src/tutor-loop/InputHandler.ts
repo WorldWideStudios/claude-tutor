@@ -1,15 +1,15 @@
-import type { Interface as ReadlineInterface } from 'readline';
-import type { Segment } from '../types.js';
-import type { ExtractedCode } from '../input.js';
+import type { Interface as ReadlineInterface } from "readline";
+import type { Segment } from "../types.js";
+import type { ExtractedCode } from "../input.js";
 import {
   createTyperSharkInput,
   createMultiLineTyperSharkInput,
   createFreeFormInput,
-} from '../input.js';
-import { isDiscussMode, isBlockMode, isTutorMode } from '../mode.js';
-import { displayContinuationPrompt } from '../display.js';
-import type { GoldenCodeManager } from './GoldenCodeManager.js';
-import type { CommandExecutor } from './CommandExecutor.js';
+} from "../input.js";
+import { isDiscussMode, isBlockMode, isTutorMode } from "../mode.js";
+import { displayContinuationPrompt } from "../display.js";
+import type { GoldenCodeManager } from "./GoldenCodeManager.js";
+import type { CommandExecutor } from "./CommandExecutor.js";
 
 /**
  * Manages user input based on current mode (tutor/block/discuss).
@@ -24,7 +24,7 @@ export class InputHandler {
   constructor(
     rl: ReadlineInterface,
     goldenCodeManager: GoldenCodeManager,
-    commandExecutor: CommandExecutor
+    commandExecutor: CommandExecutor,
   ) {
     this.rl = rl;
     this.goldenCodeManager = goldenCodeManager;
@@ -55,7 +55,7 @@ export class InputHandler {
       const currentExpectedCode = this.goldenCodeManager.getCurrentCode();
       const expectedCodeStr =
         currentExpectedCode?.isMultiLine && currentExpectedCode?.lines
-          ? currentExpectedCode.lines.map((l) => l.code).join('\n')
+          ? currentExpectedCode.lines.map((l) => l.code).join("\n")
           : currentExpectedCode?.code || null;
       const result = await createFreeFormInput(this.rl, expectedCodeStr);
       this.goldenCodeManager.clear(); // Clear expected code after input
@@ -84,29 +84,29 @@ export class InputHandler {
         const results = await createMultiLineTyperSharkInput(
           this.rl,
           currentExpectedCode.lines,
-          currentExpectedCode.explanation || 'Type each line below:',
-          linesToClear
+          currentExpectedCode.explanation || "Type each line below:",
+          linesToClear,
         );
         // Clear expected code after input
         this.goldenCodeManager.clear();
 
         // Check if user asked a question instead of typing code
-        if (results.length === 1 && results[0].startsWith('__QUESTION__:')) {
+        if (results.length === 1 && results[0].startsWith("__QUESTION__:")) {
           // Extract the question and return it as natural language
-          return results[0].slice('__QUESTION__:'.length);
+          return results[0].slice("__QUESTION__:".length);
         }
 
         // Advance to next golden step after successful multi-line input
         await this.goldenCodeManager.advance();
 
         // Return all lines joined for command execution
-        return results.join('\n');
+        return results.join("\n");
       } else {
         // Single-line Typer Shark input with real-time character feedback
         const result = await createTyperSharkInput(
           this.rl,
           currentExpectedCode.code,
-          currentExpectedCode.explanation
+          currentExpectedCode.explanation,
         );
         // Clear expected code after Typer Shark input (user typed something)
         this.goldenCodeManager.clear();
@@ -120,7 +120,7 @@ export class InputHandler {
       // Heredoc continuation - use regular readline
       displayContinuationPrompt();
       return new Promise((resolve) => {
-        this.rl.once('line', resolve);
+        this.rl.once("line", resolve);
       });
     } else {
       // TUTOR MODE without expected code - use free-form input with hint
@@ -128,7 +128,7 @@ export class InputHandler {
       const result = await createFreeFormInput(
         this.rl,
         null,
-        'Press Enter to continue, or type a question'
+        "Press Enter to continue, or type a question",
       );
       return result;
     }
@@ -137,14 +137,11 @@ export class InputHandler {
   /**
    * Handle mode transition - reload or clear expected code as needed
    */
-  async handleModeTransition(
-    fromMode: string,
-    toMode: string
-  ): Promise<void> {
-    if (toMode === 'tutor' && this.segment?.goldenCode) {
+  async handleModeTransition(fromMode: string, toMode: string): Promise<void> {
+    if (toMode === "tutor" && this.segment?.goldenCode) {
       // Reload current step from plan when switching to tutor mode
       await this.goldenCodeManager.loadCurrentStep();
-    } else if (fromMode === 'tutor' && toMode !== 'tutor') {
+    } else if (fromMode === "tutor" && toMode !== "tutor") {
       // Clear expected code when leaving tutor mode
       this.goldenCodeManager.clear();
     }
