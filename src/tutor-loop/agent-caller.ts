@@ -1,5 +1,5 @@
-import type { MessageParam } from '@anthropic-ai/sdk/resources/messages';
-import type { Curriculum, TutorState, Progress, Segment } from '../types.js';
+import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
+import type { Curriculum, TutorState, Progress, Segment } from "../types.js";
 
 export interface AgentContext {
   curriculum: Curriculum;
@@ -22,10 +22,10 @@ export interface AgentCallerDependencies {
   runAgentTurn: (
     message: string,
     messages: MessageParam[],
-    context: any
+    context: any,
   ) => Promise<AgentResult>;
   displayText: (text: string) => void;
-  displayToolStatus: (toolName: string, status: 'start' | 'end') => void;
+  displayToolStatus: (toolName: string, status: "start" | "end") => void;
   displayError: (message: string) => void;
   startLoading: () => void;
   stopLoading: () => void;
@@ -62,10 +62,12 @@ export class AgentCaller {
   async callAgent(
     message: string,
     messages: MessageParam[],
-    context: AgentContext
+    context: AgentContext,
   ): Promise<AgentResult> {
     // Queue this call to prevent race conditions
-    const result = this.callQueue.then(() => this.executeAgentCall(message, messages, context));
+    const result = this.callQueue.then(() =>
+      this.executeAgentCall(message, messages, context),
+    );
     this.callQueue = result.catch(() => {}); // Prevent queue from breaking on errors
     return result;
   }
@@ -73,7 +75,7 @@ export class AgentCaller {
   private async executeAgentCall(
     message: string,
     messages: MessageParam[],
-    context: AgentContext
+    context: AgentContext,
   ): Promise<AgentResult> {
     this.deps.resetStreamState();
     this.deps.setAgentRunning(true);
@@ -90,7 +92,7 @@ export class AgentCaller {
           }
           this.deps.displayText(text);
         },
-        onToolUse: (toolName: string, status: 'start' | 'end') => {
+        onToolUse: (toolName: string, status: "start" | "end") => {
           this.deps.displayToolStatus(toolName, status);
         },
         onSegmentComplete: context.onSegmentComplete,
@@ -119,21 +121,21 @@ export class AgentCaller {
       return;
     }
 
-    process.on('SIGINT', async () => {
-      console.log('\n\nSaving progress...');
-      
+    process.on("SIGINT", async () => {
+      console.log("\n\nSaving progress...");
+
       try {
         await Promise.all([
           config.saveState(config.state),
           config.saveProgress(config.workingDirectory, config.progress),
         ]);
-        console.log('Progress saved.');
+        console.log("Progress saved.");
       } catch (error: any) {
-        console.error('Failed to save progress:', error.message);
+        console.error("Failed to save progress:", error.message);
       }
 
       config.readlineClose();
-      
+
       // Reset terminal if in raw mode
       if (process.stdin.isTTY && process.stdin.isRaw) {
         process.stdin.setRawMode(false);

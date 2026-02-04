@@ -1,21 +1,44 @@
-import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
-import { AgentCaller, type AgentResult } from '../agent-caller.js';
-import type { MessageParam } from '@anthropic-ai/sdk/resources/messages';
+import {
+  describe,
+  it,
+  expect,
+  jest,
+  beforeEach,
+  afterEach,
+} from "@jest/globals";
+import { AgentCaller, type AgentResult } from "../agent-caller.js";
+import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
 
-describe('AgentCaller', () => {
-  let mockRunAgentTurn: jest.Mock<(message: string, messages: MessageParam[], context: any) => Promise<AgentResult>>;
+describe("AgentCaller", () => {
+  let mockRunAgentTurn: jest.Mock<
+    (
+      message: string,
+      messages: MessageParam[],
+      context: any,
+    ) => Promise<AgentResult>
+  >;
   let mockDisplayText: jest.Mock<(text: string) => void>;
-  let mockDisplayToolStatus: jest.Mock<(toolName: string, status: 'start' | 'end') => void>;
+  let mockDisplayToolStatus: jest.Mock<
+    (toolName: string, status: "start" | "end") => void
+  >;
   let mockDisplayError: jest.Mock<(message: string) => void>;
   let mockStartLoading: jest.Mock<() => void>;
   let mockStopLoading: jest.Mock<() => void>;
   let mockSetAgentRunning: jest.Mock<(running: boolean) => void>;
   let mockResetStreamState: jest.Mock<() => void>;
-  
+
   beforeEach(() => {
-    mockRunAgentTurn = jest.fn<(message: string, messages: MessageParam[], context: any) => Promise<AgentResult>>();
+    mockRunAgentTurn =
+      jest.fn<
+        (
+          message: string,
+          messages: MessageParam[],
+          context: any,
+        ) => Promise<AgentResult>
+      >();
     mockDisplayText = jest.fn<(text: string) => void>();
-    mockDisplayToolStatus = jest.fn<(toolName: string, status: 'start' | 'end') => void>();
+    mockDisplayToolStatus =
+      jest.fn<(toolName: string, status: "start" | "end") => void>();
     mockDisplayError = jest.fn<(message: string) => void>();
     mockStartLoading = jest.fn<() => void>();
     mockStopLoading = jest.fn<() => void>();
@@ -23,8 +46,8 @@ describe('AgentCaller', () => {
     mockResetStreamState = jest.fn<() => void>();
   });
 
-  describe('callAgent', () => {
-    it('should prevent concurrent agent calls', async () => {
+  describe("callAgent", () => {
+    it("should prevent concurrent agent calls", async () => {
       const caller = new AgentCaller({
         runAgentTurn: mockRunAgentTurn,
         displayText: mockDisplayText,
@@ -37,8 +60,11 @@ describe('AgentCaller', () => {
       });
 
       // First call - slow
-      mockRunAgentTurn.mockImplementation(() => 
-        new Promise(resolve => setTimeout(() => resolve({ messages: [] }), 100))
+      mockRunAgentTurn.mockImplementation(
+        () =>
+          new Promise((resolve) =>
+            setTimeout(() => resolve({ messages: [] }), 100),
+          ),
       );
 
       const messages: MessageParam[] = [];
@@ -50,13 +76,16 @@ describe('AgentCaller', () => {
       };
 
       // Start first call
-      const call1Promise = caller.callAgent('test1', messages, context);
-      
+      const call1Promise = caller.callAgent("test1", messages, context);
+
       // Try to start second call immediately
-      const call2Promise = caller.callAgent('test2', messages, context);
+      const call2Promise = caller.callAgent("test2", messages, context);
 
       // Both should resolve
-      const [result1, result2] = await Promise.all([call1Promise, call2Promise]);
+      const [result1, result2] = await Promise.all([
+        call1Promise,
+        call2Promise,
+      ]);
 
       // runAgentTurn should be called twice, but sequentially
       expect(mockRunAgentTurn).toHaveBeenCalledTimes(2);
@@ -64,7 +93,7 @@ describe('AgentCaller', () => {
       expect(result2.messages).toBeDefined();
     });
 
-    it('should handle errors and reset state', async () => {
+    it("should handle errors and reset state", async () => {
       const caller = new AgentCaller({
         runAgentTurn: mockRunAgentTurn,
         displayText: mockDisplayText,
@@ -76,7 +105,7 @@ describe('AgentCaller', () => {
         resetStreamState: mockResetStreamState,
       });
 
-      const error = new Error('Agent failed');
+      const error = new Error("Agent failed");
       mockRunAgentTurn.mockRejectedValue(error);
 
       const messages: MessageParam[] = [];
@@ -87,15 +116,17 @@ describe('AgentCaller', () => {
         segmentIndex: 0,
       };
 
-      await expect(caller.callAgent('test', messages, context)).rejects.toThrow('Agent failed');
+      await expect(caller.callAgent("test", messages, context)).rejects.toThrow(
+        "Agent failed",
+      );
 
       // Should have called cleanup
       expect(mockStopLoading).toHaveBeenCalled();
       expect(mockSetAgentRunning).toHaveBeenCalledWith(false);
-      expect(mockDisplayError).toHaveBeenCalledWith('Agent failed');
+      expect(mockDisplayError).toHaveBeenCalledWith("Agent failed");
     });
 
-    it('should stop loading when first text arrives', async () => {
+    it("should stop loading when first text arrives", async () => {
       const caller = new AgentCaller({
         runAgentTurn: mockRunAgentTurn,
         displayText: mockDisplayText,
@@ -108,10 +139,12 @@ describe('AgentCaller', () => {
       });
 
       let capturedOnText: ((text: string) => void) | undefined;
-      mockRunAgentTurn.mockImplementation((msg: string, msgs: MessageParam[], opts: any) => {
-        capturedOnText = opts.onText;
-        return Promise.resolve({ messages: [] });
-      });
+      mockRunAgentTurn.mockImplementation(
+        (msg: string, msgs: MessageParam[], opts: any) => {
+          capturedOnText = opts.onText;
+          return Promise.resolve({ messages: [] });
+        },
+      );
 
       const messages: MessageParam[] = [];
       const context = {
@@ -121,22 +154,22 @@ describe('AgentCaller', () => {
         segmentIndex: 0,
       };
 
-      const promise = caller.callAgent('test', messages, context);
+      const promise = caller.callAgent("test", messages, context);
 
       // Simulate text arrival
       if (capturedOnText) {
-        capturedOnText('First text');
+        capturedOnText("First text");
         expect(mockStopLoading).toHaveBeenCalledTimes(1);
-        
+
         // Second text should not stop loading again
-        capturedOnText('Second text');
+        capturedOnText("Second text");
         expect(mockStopLoading).toHaveBeenCalledTimes(1);
       }
 
       await promise;
     });
 
-    it('should forward text to display callback', async () => {
+    it("should forward text to display callback", async () => {
       const caller = new AgentCaller({
         runAgentTurn: mockRunAgentTurn,
         displayText: mockDisplayText,
@@ -149,10 +182,12 @@ describe('AgentCaller', () => {
       });
 
       let capturedOnText: ((text: string) => void) | undefined;
-      mockRunAgentTurn.mockImplementation((msg: string, msgs: MessageParam[], opts: any) => {
-        capturedOnText = opts.onText;
-        return Promise.resolve({ messages: [] });
-      });
+      mockRunAgentTurn.mockImplementation(
+        (msg: string, msgs: MessageParam[], opts: any) => {
+          capturedOnText = opts.onText;
+          return Promise.resolve({ messages: [] });
+        },
+      );
 
       const messages: MessageParam[] = [];
       const context = {
@@ -162,14 +197,14 @@ describe('AgentCaller', () => {
         segmentIndex: 0,
       };
 
-      await caller.callAgent('test', messages, context);
+      await caller.callAgent("test", messages, context);
 
       // Simulate text
-      capturedOnText?.('Hello world');
-      expect(mockDisplayText).toHaveBeenCalledWith('Hello world');
+      capturedOnText?.("Hello world");
+      expect(mockDisplayText).toHaveBeenCalledWith("Hello world");
     });
 
-    it('should forward tool use events', async () => {
+    it("should forward tool use events", async () => {
       const caller = new AgentCaller({
         runAgentTurn: mockRunAgentTurn,
         displayText: mockDisplayText,
@@ -181,11 +216,15 @@ describe('AgentCaller', () => {
         resetStreamState: mockResetStreamState,
       });
 
-      let capturedOnToolUse: ((tool: string, status: string) => void) | undefined;
-      mockRunAgentTurn.mockImplementation((msg: string, msgs: MessageParam[], opts: any) => {
-        capturedOnToolUse = opts.onToolUse;
-        return Promise.resolve({ messages: [] });
-      });
+      let capturedOnToolUse:
+        | ((tool: string, status: string) => void)
+        | undefined;
+      mockRunAgentTurn.mockImplementation(
+        (msg: string, msgs: MessageParam[], opts: any) => {
+          capturedOnToolUse = opts.onToolUse;
+          return Promise.resolve({ messages: [] });
+        },
+      );
 
       const messages: MessageParam[] = [];
       const context = {
@@ -195,17 +234,24 @@ describe('AgentCaller', () => {
         segmentIndex: 0,
       };
 
-      await caller.callAgent('test', messages, context);
+      await caller.callAgent("test", messages, context);
 
-      capturedOnToolUse?.('read_file', 'running');
-      expect(mockDisplayToolStatus).toHaveBeenCalledWith('read_file', 'running');
+      capturedOnToolUse?.("read_file", "running");
+      expect(mockDisplayToolStatus).toHaveBeenCalledWith(
+        "read_file",
+        "running",
+      );
     });
   });
 
-  describe('SIGINT handling', () => {
-    it('should set up SIGINT handler when enabled', () => {
-      const mockSaveState = jest.fn<(state: any) => Promise<void>>().mockResolvedValue(undefined);
-      const mockSaveProgress = jest.fn<(dir: string, progress: any) => Promise<void>>().mockResolvedValue(undefined);
+  describe("SIGINT handling", () => {
+    it("should set up SIGINT handler when enabled", () => {
+      const mockSaveState = jest
+        .fn<(state: any) => Promise<void>>()
+        .mockResolvedValue(undefined);
+      const mockSaveProgress = jest
+        .fn<(dir: string, progress: any) => Promise<void>>()
+        .mockResolvedValue(undefined);
       const mockClose = jest.fn<() => void>();
       const mockExit = jest.fn<(code: number) => never>();
 
@@ -235,11 +281,11 @@ describe('AgentCaller', () => {
         saveProgress: mockSaveProgress,
         readlineClose: mockClose,
         state: {} as any,
-        workingDirectory: '/test',
+        workingDirectory: "/test",
         progress: {} as any,
       });
 
-      expect(process.on).toHaveBeenCalledWith('SIGINT', expect.any(Function));
+      expect(process.on).toHaveBeenCalledWith("SIGINT", expect.any(Function));
 
       // Restore
       process.on = originalOn;

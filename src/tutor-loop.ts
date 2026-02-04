@@ -52,6 +52,7 @@ import type { Curriculum, TutorState, Progress } from "./types.js";
 import { execSync } from "child_process";
 import { runPreflightChecks } from "./preflight.js";
 import { AgentCaller } from "./tutor-loop/agent-caller.js";
+import { GoldenCodeManager } from "./tutor-loop/GoldenCodeManager.js";
 
 // Shell commands that should be executed directly
 const SHELL_COMMANDS = [
@@ -139,8 +140,6 @@ export async function runTutorLoop(
 
   let messages: MessageParam[] = createInitialMessages();
   let previousSummary: string | undefined;
-  let currentExpectedCode: ExtractedCode | null = null; // Track what user should type with explanation
-  let currentGoldenStepIndex = 0; // Track position in goldenCode for plan-based tutor mode
 
   const rl = readline.createInterface({
     input: process.stdin,
@@ -184,6 +183,14 @@ export async function runTutorLoop(
     await saveProgress(curriculum.workingDirectory, progress);
   }
 
+  // Setup golden code manager
+  const goldenCodeManager = new GoldenCodeManager(
+    segment,
+    curriculum.workingDirectory,
+    updateProgress,
+    progress.currentGoldenStep || 0
+  );
+
   // Setup SIGINT handler to save progress on Ctrl+C
   agentCaller.setupSigintHandler({
     saveState,
@@ -211,23 +218,15 @@ export async function runTutorLoop(
           curriculum,
           state.currentSegmentIndex + 1,
         );
-        displaySegmentComplete(summary || '', nextSegment?.title);
+        displaySegmentComplete(summary || "", nextSegment?.title);
       },
     });
     messages = result.messages;
-    // Initialize golden step index but DON'T pre-load code yet
-    // Let the first input prompt load the appropriate step based on tutor context
-    if (segment && segment.goldenCode) {
-      currentGoldenStepIndex = progress.currentGoldenStep || 0;
-      // Don't set currentExpectedCode here - it will be loaded lazily in getInput()
-    }
     // Save the tutor's initial message to progress
     if (result.lastResponse) {
       await updateProgress(curriculum.workingDirectory, {
         lastTutorMessage: result.lastResponse.slice(0, 500),
-        totalGoldenSteps: segment
-          ? getGoldenCodeStepCount(segment.goldenCode)
-          : 0,
+        totalGoldenSteps: goldenCodeManager.getTotalSteps(),
       });
     }
     newLine();
@@ -243,29 +242,28 @@ export async function runTutorLoop(
     // DISCUSS MODE: Free-form natural language input, send directly to LLM
     if (isDiscussMode() && !heredocState.active) {
       const result = await createFreeFormInput(rl, null);
-      currentExpectedCode = null; // Clear any expected code in discuss mode
+      goldenCodeManager.clear(); // Clear any expected code in discuss mode
       return result;
     }
 
     // CODE MODE: Regular terminal behavior - show expected code as reference, type freely
     if (isBlockMode() && !heredocState.active) {
+      const currentExpectedCode = goldenCodeManager.getCurrentCode();
       const expectedCodeStr =
         currentExpectedCode?.isMultiLine && currentExpectedCode?.lines
           ? currentExpectedCode.lines.map((l) => l.code).join("\n")
           : currentExpectedCode?.code || null;
       const result = await createFreeFormInput(rl, expectedCodeStr);
-      currentExpectedCode = null; // Clear expected code after input
+      goldenCodeManager.clear(); // Clear expected code after input
       return result;
     }
 
     // TUTOR MODE: Use Typer Shark for guided typing
     // Don't use Typer Shark for heredoc continuation lines
     // Lazy load golden code if not already loaded
+    let currentExpectedCode = goldenCodeManager.getCurrentCode();
     if (!currentExpectedCode && !heredocState.active && segment?.goldenCode) {
-      currentExpectedCode = goldenCodeToExtractedCode(
-        segment.goldenCode,
-        currentGoldenStepIndex + 1,
-      );
+      currentExpectedCode = await goldenCodeManager.loadCurrentStep();
     }
 
     if (currentExpectedCode && !heredocState.active) {
@@ -282,7 +280,7 @@ export async function runTutorLoop(
           linesToClear,
         );
         // Clear expected code after input
-        currentExpectedCode = null;
+        goldenCodeManager.clear();
 
         // Check if user asked a question instead of typing code
         if (results.length === 1 && results[0].startsWith("__QUESTION__:")) {
@@ -291,16 +289,7 @@ export async function runTutorLoop(
         }
 
         // Advance to next golden step after successful multi-line input
-        if (
-          segment &&
-          segment.goldenCode &&
-          hasMoreGoldenSteps(segment.goldenCode, currentGoldenStepIndex)
-        ) {
-          currentGoldenStepIndex++;
-          await updateProgress(curriculum.workingDirectory, {
-            currentGoldenStep: currentGoldenStepIndex,
-          });
-        }
+        await goldenCodeManager.advance();
 
         // Return all lines joined for command execution
         return results.join("\n");
@@ -312,19 +301,10 @@ export async function runTutorLoop(
           currentExpectedCode.explanation,
         );
         // Clear expected code after Typer Shark input (user typed something)
-        currentExpectedCode = null;
+        goldenCodeManager.clear();
 
         // Advance to next golden step after successful single-line input
-        if (
-          segment &&
-          segment.goldenCode &&
-          hasMoreGoldenSteps(segment.goldenCode, currentGoldenStepIndex)
-        ) {
-          currentGoldenStepIndex++;
-          await updateProgress(curriculum.workingDirectory, {
-            currentGoldenStep: currentGoldenStepIndex,
-          });
-        }
+        await goldenCodeManager.advance();
 
         return result;
       }
@@ -355,16 +335,15 @@ export async function runTutorLoop(
     // Detect mode change during input (user pressed Shift+Tab)
     const modeAfterInput = getMode();
     if (
-      modeBeforeInput !== modeAfterInput &&
-      isTutorMode() &&
-      segment &&
-      segment.goldenCode
+      modeBeforeInput !== modeAfterInput
     ) {
-      // Reload current step from plan when switching to tutor mode
-      currentExpectedCode = goldenCodeToExtractedCode(
-        segment.goldenCode,
-        currentGoldenStepIndex,
-      );
+      if (isTutorMode() && segment?.goldenCode) {
+        // Reload current step from plan when switching to tutor mode
+        await goldenCodeManager.loadCurrentStep();
+      } else {
+        // Clear expected code when leaving tutor mode
+        goldenCodeManager.clear();
+      }
     }
     // Handle heredoc continuation
     if (heredocState.active) {
@@ -418,16 +397,18 @@ export async function runTutorLoop(
           messages = result.messages;
           // Note: Step advancement now happens in Typer Shark completion
           // Load next step from plan (if not already loaded)
-          if (segment && segment.goldenCode && !currentExpectedCode) {
-            currentExpectedCode = goldenCodeToExtractedCode(
-              segment.goldenCode,
-              currentGoldenStepIndex,
-            );
+          if (!goldenCodeManager.getCurrentCode()) {
+            await goldenCodeManager.loadCurrentStep();
           }
           newLine();
         } catch (error: any) {
           // Reset heredoc state on error
-          heredocState = { active: false, delimiter: "", command: "", lines: [] };
+          heredocState = {
+            active: false,
+            delimiter: "",
+            command: "",
+            lines: [],
+          };
           displayError(error.message);
         }
         continue;
@@ -465,13 +446,10 @@ export async function runTutorLoop(
         );
         messages = result.messages;
         // Reload current step from plan (don't advance on Enter)
-        if (isTutorMode() && segment && segment.goldenCode) {
-          currentExpectedCode = goldenCodeToExtractedCode(
-            segment.goldenCode,
-            currentGoldenStepIndex,
-          );
+        if (isTutorMode() && segment?.goldenCode) {
+          await goldenCodeManager.loadCurrentStep();
         } else if (isDiscussMode()) {
-          currentExpectedCode = null;
+          goldenCodeManager.clear();
         }
         newLine();
         continue;
@@ -570,18 +548,10 @@ export async function runTutorLoop(
       messages = result.messages;
       // Note: Step advancement now happens in Typer Shark completion
       // Load next step from plan (if not already loaded)
-      if (
-        isTutorMode() &&
-        segment &&
-        segment.goldenCode &&
-        !currentExpectedCode
-      ) {
-        currentExpectedCode = goldenCodeToExtractedCode(
-          segment.goldenCode,
-          currentGoldenStepIndex,
-        );
+      if (isTutorMode() && segment?.goldenCode && !goldenCodeManager.getCurrentCode()) {
+        await goldenCodeManager.loadCurrentStep();
       } else if (isDiscussMode()) {
-        currentExpectedCode = null;
+        goldenCodeManager.clear();
       }
       newLine();
 
@@ -662,18 +632,8 @@ export async function runTutorLoop(
           },
         });
         messages = newResult.messages;
-        // Reset golden step index for new segment and load from plan
-        currentGoldenStepIndex = 0;
-        if (segment && segment.goldenCode) {
-          currentExpectedCode = goldenCodeToExtractedCode(
-            segment.goldenCode,
-            currentGoldenStepIndex,
-          );
-          await updateProgress(curriculum.workingDirectory, {
-            currentGoldenStep: 0,
-            totalGoldenSteps: getGoldenCodeStepCount(segment.goldenCode),
-          });
-        }
+        // Update golden code manager for new segment
+        await goldenCodeManager.updateSegment(segment);
         newLine();
       }
     } catch (error: any) {

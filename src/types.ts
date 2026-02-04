@@ -137,6 +137,9 @@ export const TUTOR_MODES: {
 
 // Progress tracking - stored in project directory
 export const ProgressSchema = z.object({
+  // Schema version for migration support
+  version: z.number().default(2),
+
   // Current segment being worked on
   currentSegmentId: z.string(),
   currentSegmentIndex: z.number(),
