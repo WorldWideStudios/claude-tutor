@@ -112,6 +112,37 @@ export async function runTutorLoop(
     progress.currentGoldenStep || 0,
   );
 
+  // When resuming, check if current golden step is already complete and advance past it
+  if (isResuming && segment?.goldenCode && progress.codeWritten) {
+    const totalSteps = goldenCodeManager.getTotalSteps();
+    const currentStep = goldenCodeManager.getCurrentIndex();
+
+    // If code is already written, syntax verified, and code reviewed,
+    // the current golden code step is complete
+    if (
+      progress.codeWritten &&
+      progress.syntaxVerified &&
+      progress.codeReviewed
+    ) {
+      // If not at final step, advance to next step
+      if (currentStep < totalSteps - 1) {
+        console.log(
+          `[TutorLoop] Resuming: current golden step ${currentStep} already complete, advancing...`,
+        );
+        await goldenCodeManager.advance();
+      } else {
+        // At final step and it's complete - clear it so it won't reload
+        console.log(
+          `[TutorLoop] Resuming: final golden step ${currentStep} already complete, clearing...`,
+        );
+        goldenCodeManager.clear();
+        // Mark this step as loaded to prevent reload
+        await goldenCodeManager.loadCurrentStep();
+        goldenCodeManager.clear();
+      }
+    }
+  }
+
   // Setup command executor
   const commandExecutor = new CommandExecutor(
     curriculum.workingDirectory,
@@ -340,15 +371,9 @@ export async function runTutorLoop(
       });
 
       messages = result.messages;
-      // Note: Step advancement now happens in Typer Shark completion
-      // Load next step from plan (if not already loaded)
-      if (
-        isTutorMode() &&
-        segment?.goldenCode &&
-        !goldenCodeManager.getCurrentCode()
-      ) {
-        await goldenCodeManager.loadCurrentStep();
-      } else if (isDiscussMode()) {
+      // Note: Golden code loading is handled lazily in InputHandler.getInput()
+      // when user input is needed. No need to preload here.
+      if (isDiscussMode()) {
         goldenCodeManager.clear();
       }
       newLine();

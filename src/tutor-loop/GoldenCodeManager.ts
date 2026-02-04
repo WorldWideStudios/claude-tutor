@@ -16,6 +16,7 @@ import {
 export class GoldenCodeManager {
   private currentIndex: number;
   private currentExpectedCode: ExtractedCode | null = null;
+  private lastLoadedIndex: number = -1; // Track last loaded step to prevent duplicates
   private segment: Segment | null;
   private projectDir: string;
   private updateProgress: (
@@ -41,6 +42,7 @@ export class GoldenCodeManager {
    * - No golden code
    * - Index out of bounds
    * - Index is negative
+   * - Step was already loaded (prevents duplicate displays)
    */
   async loadCurrentStep(): Promise<ExtractedCode | null> {
     if (!this.segment?.goldenCode) {
@@ -50,21 +52,41 @@ export class GoldenCodeManager {
 
     // Validate index bounds
     if (this.currentIndex < 0) {
+      console.log(
+        `[GoldenCodeManager] Cannot load step: index ${this.currentIndex} is negative`,
+      );
       this.currentExpectedCode = null;
       return null;
     }
 
     const totalSteps = this.getTotalSteps();
     if (this.currentIndex >= totalSteps) {
+      console.log(
+        `[GoldenCodeManager] Cannot load step: index ${this.currentIndex} >= totalSteps ${totalSteps}`,
+      );
       this.currentExpectedCode = null;
       return null;
     }
+
+    // Prevent loading the same step twice in a row
+    if (this.currentIndex === this.lastLoadedIndex) {
+      console.log(
+        `[GoldenCodeManager] Skipping reload of step ${this.currentIndex} (already loaded)`,
+      );
+      return this.currentExpectedCode;
+    }
+
+    console.log(
+      `[GoldenCodeManager] Loading step ${this.currentIndex}/${totalSteps}`,
+    );
 
     // Load the step at currentIndex (fixes off-by-one bug - no +1 here!)
     this.currentExpectedCode = goldenCodeToExtractedCode(
       this.segment.goldenCode,
       this.currentIndex,
     );
+
+    this.lastLoadedIndex = this.currentIndex;
 
     return this.currentExpectedCode;
   }
@@ -81,9 +103,17 @@ export class GoldenCodeManager {
     // Only advance if there are more steps
     if (this.hasMoreSteps()) {
       this.currentIndex++;
+      this.lastLoadedIndex = -1; // Reset to allow loading the new step
+      console.log(
+        `[GoldenCodeManager] Advanced to step ${this.currentIndex}/${this.getTotalSteps()}`,
+      );
       await this.updateProgress(this.projectDir, {
         currentGoldenStep: this.currentIndex,
       });
+    } else {
+      console.log(
+        `[GoldenCodeManager] At final step ${this.currentIndex}/${this.getTotalSteps()}, not advancing`,
+      );
     }
   }
 
@@ -92,7 +122,11 @@ export class GoldenCodeManager {
    * Useful when switching modes or contexts.
    */
   clear(): void {
+    console.log(
+      `[GoldenCodeManager] Clearing current code (index remains ${this.currentIndex})`,
+    );
     this.currentExpectedCode = null;
+    // Don't reset lastLoadedIndex - we want to prevent reloading the same step
   }
 
   /**

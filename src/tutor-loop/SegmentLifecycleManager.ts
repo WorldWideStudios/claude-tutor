@@ -73,6 +73,9 @@ export class SegmentLifecycleManager {
     state.completedSegments = [...state.completedSegments, completedSegmentId];
     state.currentSegmentIndex++;
     state.previousSegmentSummary = summary;
+    console.log(
+      `[SegmentLifecycleManager] Segment ${completedSegmentId} complete. Advanced to segment index ${state.currentSegmentIndex}`,
+    );
     await this.callbacks.saveState(state);
 
     // Log segment completion
