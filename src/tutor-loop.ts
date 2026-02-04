@@ -45,10 +45,12 @@ import {
   newLine,
   colors,
   displayInfo,
+  displayPreflightError,
 } from "./display.js";
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
 import type { Curriculum, TutorState, Progress } from "./types.js";
 import { execSync } from "child_process";
+import { runPreflightChecks } from "./preflight.js";
 
 // Shell commands that should be executed directly
 const SHELL_COMMANDS = [
@@ -127,6 +129,13 @@ export async function runTutorLoop(
   curriculum: Curriculum,
   state: TutorState,
 ): Promise<void> {
+  // Run preflight checks before starting
+  const preflight = runPreflightChecks(curriculum.workingDirectory);
+  if (!preflight.ok) {
+    displayPreflightError(preflight.error!);
+    throw new Error(`Preflight check failed: ${preflight.error}`);
+  }
+
   let messages: MessageParam[] = createInitialMessages();
   let previousSummary: string | undefined;
   let currentExpectedCode: ExtractedCode | null = null; // Track what user should type with explanation

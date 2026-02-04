@@ -118,12 +118,16 @@ export interface ToolResult {
 
 // Progress tracking - stored in project directory
 // Tutor interaction modes (like Claude Code's plan/confirm/auto-accept)
-export type TutorMode = 'tutor' | 'block' | 'discuss';
+export type TutorMode = "tutor" | "block" | "discuss";
 
-export const TUTOR_MODES: { mode: TutorMode; label: string; description: string }[] = [
-  { mode: 'tutor', label: 'Tutor', description: 'Line-by-line guided typing' },
-  { mode: 'block', label: 'Block', description: 'Type code freely' },
-  { mode: 'discuss', label: 'Discuss', description: 'Ask questions anytime' },
+export const TUTOR_MODES: {
+  mode: TutorMode;
+  label: string;
+  description: string;
+}[] = [
+  { mode: "tutor", label: "Tutor", description: "Line-by-line guided typing" },
+  { mode: "block", label: "Block", description: "Type code freely" },
+  { mode: "discuss", label: "Discuss", description: "Ask questions anytime" },
 ];
 
 // Progress tracking - stored in project directory
@@ -156,3 +160,9 @@ export const ProgressSchema = z.object({
   lastUpdatedAt: z.string(),
 });
 export type Progress = z.infer<typeof ProgressSchema>;
+
+// Project load result for lifecycle functions
+export type ProjectLoadResult = {
+  curriculum: Curriculum;
+  state: TutorState;
+} | null;

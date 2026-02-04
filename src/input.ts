@@ -14,6 +14,10 @@ import {
   getModeIndicator,
   displayModeFooter,
   displayModeFooterInline,
+  displayQuestionPrompt,
+  closeQuestionPrompt,
+  colors,
+  symbols,
 } from "./display.js";
 import {
   cycleMode,
@@ -24,8 +28,8 @@ import {
 } from "./mode.js";
 import chalk from "chalk";
 
-// Colors for typing feedback
-const colors = {
+// Colors for typing feedback (local duplicate for backward compatibility)
+const localColors = {
   success: chalk.green,
   error: chalk.red,
   orange: chalk.hex("#F59E0B"),
@@ -2466,5 +2470,106 @@ export function createFreeFormInput(
     };
 
     process.stdin.on("data", handleKeypress);
+  });
+}
+
+/**
+ * Ask a question in raw mode (preserves styling, no readline interference)
+ * Returns the user's input after they press Enter
+ */
+export function askRawModeQuestion(prompt: string): Promise<string> {
+  return new Promise((resolve) => {
+    displayQuestionPrompt(prompt);
+
+    // Use raw mode for styled input (no readline interference)
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+
+    let inputBuffer = "";
+    const termWidth = process.stdout.columns || 80;
+    const prefixLen = 2; // "› " is 2 chars
+    const inputWidth = termWidth - prefixLen;
+
+    // Calculate how many visual lines the input takes
+    const getInputLineCount = (text: string): number => {
+      if (text.length === 0) return 1;
+      return Math.ceil(text.length / inputWidth);
+    };
+
+    // Redraw the entire input area (handles wrapping properly)
+    const redrawInput = () => {
+      const lineCount = getInputLineCount(inputBuffer);
+
+      // Move to start of input area (line with "› ")
+      // Move up by current line count to get back to the first line
+      if (lineCount > 1) {
+        process.stdout.write(`\x1B[${lineCount - 1}A`);
+      }
+      process.stdout.write("\r");
+
+      // Clear from cursor to end of screen (removes old input and bottom bar)
+      process.stdout.write("\x1B[J");
+
+      // Draw input with proper wrapping
+      const lines: string[] = [];
+      for (let i = 0; i < inputBuffer.length; i += inputWidth) {
+        lines.push(inputBuffer.slice(i, i + inputWidth));
+      }
+      if (lines.length === 0) lines.push("");
+
+      lines.forEach((line, idx) => {
+        if (idx === 0) {
+          process.stdout.write(localColors.primary(symbols.arrow + " ") + line);
+        } else {
+          process.stdout.write("\n  " + line);
+        }
+      });
+
+      // Draw bottom bar on new line
+      process.stdout.write("\n" + drawBar());
+
+      // Move cursor back to end of input
+      process.stdout.write("\x1B[1A"); // Move up to input line
+      const lastLineLen = lines[lines.length - 1].length;
+      const cursorCol = (lines.length === 1 ? prefixLen : 2) + lastLineLen;
+      process.stdout.write(`\r\x1B[${cursorCol}C`);
+    };
+
+    const handleInput = (chunk: Buffer) => {
+      const char = chunk.toString();
+
+      if (char === "\x03") {
+        // Ctrl+C
+        process.stdin.setRawMode(false);
+        process.stdin.removeListener("data", handleInput);
+        process.exit(0);
+      }
+
+      if (char === "\r" || char === "\n") {
+        // Enter
+        process.stdin.setRawMode(false);
+        process.stdin.removeListener("data", handleInput);
+        closeQuestionPrompt(prompt, inputBuffer);
+        resolve(inputBuffer);
+        return;
+      }
+
+      if (char === "\x7f" || char === "\b") {
+        // Backspace
+        if (inputBuffer.length > 0) {
+          inputBuffer = inputBuffer.slice(0, -1);
+          redrawInput();
+        }
+        return;
+      }
+
+      // Regular character
+      if (char.length === 1 && char >= " " && char <= "~") {
+        inputBuffer += char;
+        redrawInput();
+      }
+    };
+
+    process.stdin.on("data", handleInput);
   });
 }
