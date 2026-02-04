@@ -366,13 +366,15 @@ export async function runTutorLoop(
 
       // Check if segment was completed
       if (result.segmentCompleted) {
-        const completionResult = await lifecycleManager.handleSegmentCompletion({
-          curriculum,
-          state,
-          segment: segment!,
-          progress,
-          summary: result.summary,
-        });
+        const completionResult = await lifecycleManager.handleSegmentCompletion(
+          {
+            curriculum,
+            state,
+            segment: segment!,
+            progress,
+            summary: result.summary,
+          },
+        );
 
         // Check if curriculum is complete
         if (completionResult.curriculumComplete) {

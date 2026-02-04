@@ -1,5 +1,5 @@
-import type { MessageParam } from '@anthropic-ai/sdk/resources/messages';
-import type { Curriculum, TutorState, Progress, Segment } from '../types.js';
+import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
+import type { Curriculum, TutorState, Progress, Segment } from "../types.js";
 
 /**
  * Result of segment completion handling
@@ -19,13 +19,23 @@ export interface SegmentLifecycleCallbacks {
   saveState: (state: TutorState) => Promise<void>;
   saveProgress: (workingDir: string, progress: Progress) => Promise<void>;
   createInitialProgress: (segmentId: string, segmentIndex: number) => Progress;
-  logInteraction: (type: 'segment_completed' | 'curriculum_completed', data: any) => Promise<void>;
+  logInteraction: (
+    type: "segment_completed" | "curriculum_completed",
+    data: any,
+  ) => Promise<void>;
   getCurrentSegment: (curriculum: Curriculum, index: number) => Segment | null;
-  isCurriculumComplete: (curriculum: Curriculum, completedSegments: string[]) => boolean;
+  isCurriculumComplete: (
+    curriculum: Curriculum,
+    completedSegments: string[],
+  ) => boolean;
   pruneContextForNewSegment: (summary: string) => MessageParam[];
   displaySegmentComplete: (summary: string, nextTitle?: string) => void;
   displayCurriculumComplete: (curriculum: Curriculum) => void;
-  displaySegmentHeader: (curriculum: Curriculum, segment: Segment, index: number) => void;
+  displaySegmentHeader: (
+    curriculum: Curriculum,
+    segment: Segment,
+    index: number,
+  ) => void;
 }
 
 /**
@@ -54,7 +64,7 @@ export class SegmentLifecycleManager {
    * Handle segment completion and transition to next segment
    */
   async handleSegmentCompletion(
-    params: HandleSegmentCompletionParams
+    params: HandleSegmentCompletionParams,
   ): Promise<SegmentCompletionResult> {
     const { curriculum, state, segment, progress, summary } = params;
 
@@ -66,7 +76,7 @@ export class SegmentLifecycleManager {
     await this.callbacks.saveState(state);
 
     // Log segment completion
-    await this.callbacks.logInteraction('segment_completed', {
+    await this.callbacks.logInteraction("segment_completed", {
       metadata: {
         segmentId: completedSegmentId,
         segmentTitle: segment.title,
@@ -77,9 +87,11 @@ export class SegmentLifecycleManager {
     });
 
     // Check if curriculum is complete
-    if (this.callbacks.isCurriculumComplete(curriculum, state.completedSegments)) {
+    if (
+      this.callbacks.isCurriculumComplete(curriculum, state.completedSegments)
+    ) {
       // Log curriculum completion
-      await this.callbacks.logInteraction('curriculum_completed', {
+      await this.callbacks.logInteraction("curriculum_completed", {
         metadata: {
           curriculumId: curriculum.id,
           projectName: curriculum.projectName,
@@ -101,7 +113,7 @@ export class SegmentLifecycleManager {
     // Move to next segment
     const nextSegment = this.callbacks.getCurrentSegment(
       curriculum,
-      state.currentSegmentIndex
+      state.currentSegmentIndex,
     );
 
     if (!nextSegment) {
@@ -118,29 +130,36 @@ export class SegmentLifecycleManager {
     // Create new progress for the next segment
     const nextProgress = this.callbacks.createInitialProgress(
       nextSegment.id,
-      state.currentSegmentIndex
+      state.currentSegmentIndex,
     );
-    await this.callbacks.saveProgress(curriculum.workingDirectory, nextProgress);
+    await this.callbacks.saveProgress(
+      curriculum.workingDirectory,
+      nextProgress,
+    );
 
     // Prune context for new segment
     const prunedMessages = this.callbacks.pruneContextForNewSegment(
-      summary || ''
+      summary || "",
     );
 
     // Get the segment after next for display
     const segmentAfterNext = this.callbacks.getCurrentSegment(
       curriculum,
-      state.currentSegmentIndex + 1
+      state.currentSegmentIndex + 1,
     );
 
     // Display segment completion
     this.callbacks.displaySegmentComplete(
-      summary || 'Segment complete',
-      segmentAfterNext?.title
+      summary || "Segment complete",
+      segmentAfterNext?.title,
     );
 
     // Display new segment header
-    this.callbacks.displaySegmentHeader(curriculum, nextSegment, state.currentSegmentIndex);
+    this.callbacks.displaySegmentHeader(
+      curriculum,
+      nextSegment,
+      state.currentSegmentIndex,
+    );
 
     return {
       completed: true,
