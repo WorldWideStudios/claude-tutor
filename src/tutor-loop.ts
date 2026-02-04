@@ -54,6 +54,7 @@ import { AgentCaller } from "./tutor-loop/agent-caller.js";
 import { GoldenCodeManager } from "./tutor-loop/GoldenCodeManager.js";
 import { CommandExecutor } from "./tutor-loop/CommandExecutor.js";
 import { InputHandler } from "./tutor-loop/InputHandler.js";
+import { SegmentLifecycleManager } from "./tutor-loop/SegmentLifecycleManager.js";
 
 /**
  * Main tutor conversation loop
@@ -132,6 +133,20 @@ export async function runTutorLoop(
   // Setup input handler
   const inputHandler = new InputHandler(rl, goldenCodeManager, commandExecutor);
   inputHandler.setSegment(segment);
+
+  // Setup segment lifecycle manager
+  const lifecycleManager = new SegmentLifecycleManager({
+    saveState,
+    saveProgress,
+    createInitialProgress,
+    logInteraction,
+    getCurrentSegment,
+    isCurriculumComplete,
+    pruneContextForNewSegment,
+    displaySegmentComplete,
+    displayCurriculumComplete,
+    displaySegmentHeader,
+  });
 
   // Setup SIGINT handler to save progress on Ctrl+C
   agentCaller.setupSigintHandler({
@@ -351,74 +366,34 @@ export async function runTutorLoop(
 
       // Check if segment was completed
       if (result.segmentCompleted) {
-        // Update state - properly mark segment complete with ID tracking
-        const completedSegmentId = segment!.id;
-        state.completedSegments = [
-          ...state.completedSegments,
-          completedSegmentId,
-        ];
-        state.currentSegmentIndex++;
-        state.previousSegmentSummary = result.summary;
-        await saveState(state);
-
-        // Log segment completion
-        await logInteraction("segment_completed", {
-          metadata: {
-            segmentId: completedSegmentId,
-            segmentTitle: segment!.title,
-            segmentIndex: state.currentSegmentIndex - 1,
-            summary: result.summary,
-            completedStepsCount: progress.completedSteps.length,
-          },
+        const completionResult = await lifecycleManager.handleSegmentCompletion({
+          curriculum,
+          state,
+          segment: segment!,
+          progress,
+          summary: result.summary,
         });
 
         // Check if curriculum is complete
-        if (isCurriculumComplete(curriculum, state.completedSegments)) {
-          // Log curriculum completion
-          await logInteraction("curriculum_completed", {
-            metadata: {
-              curriculumId: curriculum.id,
-              projectName: curriculum.projectName,
-              totalSegments: curriculum.segments.length,
-              completedSegments: state.completedSegments,
-            },
-          });
-          displayCurriculumComplete(curriculum);
+        if (completionResult.curriculumComplete) {
           rl.close();
           return;
         }
 
-        // Move to next segment
-        segment = getCurrentSegment(curriculum, state.currentSegmentIndex);
+        // Update to next segment
+        segment = completionResult.nextSegment;
         if (!segment) {
-          displayCurriculumComplete(curriculum);
           rl.close();
           return;
         }
 
-        // Update input handler with new segment
+        // Update managers with new segment
         inputHandler.setSegment(segment);
-
-        // Create new progress for the next segment
-        progress = createInitialProgress(segment.id, state.currentSegmentIndex);
-        await saveProgress(curriculum.workingDirectory, progress);
-
-        // Prune context for new segment
-        messages = pruneContextForNewSegment(result.summary || "");
-        const nextSegment = getCurrentSegment(
-          curriculum,
-          state.currentSegmentIndex + 1,
-        );
-        displaySegmentComplete(
-          result.summary || "Segment complete",
-          nextSegment?.title,
-        );
-
-        // Display new segment header
-        displaySegmentHeader(curriculum, segment, state.currentSegmentIndex);
-
-        // Update golden code manager with new segment
         await goldenCodeManager.updateSegment(segment);
+
+        // Update progress and messages
+        progress = completionResult.nextProgress!;
+        messages = completionResult.prunedMessages;
 
         // Kick off new segment
         const newResult = await agentCaller.callAgent("start", messages, {
@@ -432,8 +407,6 @@ export async function runTutorLoop(
           },
         });
         messages = newResult.messages;
-        // Update golden code manager for new segment
-        await goldenCodeManager.updateSegment(segment);
         newLine();
       }
     } catch (error: any) {
