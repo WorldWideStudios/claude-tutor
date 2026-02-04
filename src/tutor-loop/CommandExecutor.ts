@@ -1,5 +1,5 @@
-import { execSync } from 'child_process';
-import type { Progress } from '../types.js';
+import { execSync } from "child_process";
+import type { Progress } from "../types.js";
 
 /**
  * Result of executing a shell command
@@ -25,25 +25,52 @@ interface HeredocState {
  */
 export class CommandExecutor {
   private workingDir: string;
-  private updateProgress: (workingDir: string, updates: any) => Promise<Progress>;
-  private addCompletedStep: (workingDir: string, step: string) => Promise<Progress>;
+  private updateProgress: (
+    workingDir: string,
+    updates: any,
+  ) => Promise<Progress>;
+  private addCompletedStep: (
+    workingDir: string,
+    step: string,
+  ) => Promise<Progress>;
   private heredocState: HeredocState;
 
   // Shell commands that should be executed directly
   private static readonly SHELL_COMMANDS = [
-    'mkdir', 'cat', 'echo', 'touch', 'rm', 'mv', 'cp', 'ls', 'cd',
-    'git', 'npm', 'npx', 'node', 'tsc', 'pwd', 'chmod', 'grep', 'find',
+    "mkdir",
+    "cat",
+    "echo",
+    "touch",
+    "rm",
+    "mv",
+    "cp",
+    "ls",
+    "cd",
+    "git",
+    "npm",
+    "npx",
+    "node",
+    "tsc",
+    "pwd",
+    "chmod",
+    "grep",
+    "find",
   ];
 
   constructor(
     workingDir: string,
     updateProgress: (workingDir: string, updates: any) => Promise<Progress>,
-    addCompletedStep: (workingDir: string, step: string) => Promise<Progress>
+    addCompletedStep: (workingDir: string, step: string) => Promise<Progress>,
   ) {
     this.workingDir = workingDir;
     this.updateProgress = updateProgress;
     this.addCompletedStep = addCompletedStep;
-    this.heredocState = { active: false, delimiter: '', command: '', lines: [] };
+    this.heredocState = {
+      active: false,
+      delimiter: "",
+      command: "",
+      lines: [],
+    };
   }
 
   /**
@@ -62,7 +89,7 @@ export class CommandExecutor {
     if (heredocMatch) {
       return { isHeredoc: true, delimiter: heredocMatch[1] };
     }
-    return { isHeredoc: false, delimiter: '' };
+    return { isHeredoc: false, delimiter: "" };
   }
 
   /**
@@ -97,7 +124,10 @@ export class CommandExecutor {
    * Complete heredoc and execute the full command
    */
   async completeHeredoc(delimiter: string): Promise<CommandResult | null> {
-    if (!this.heredocState.active || this.heredocState.delimiter !== delimiter) {
+    if (
+      !this.heredocState.active ||
+      this.heredocState.delimiter !== delimiter
+    ) {
       return null;
     }
 
@@ -105,10 +135,15 @@ export class CommandExecutor {
       this.heredocState.command,
       ...this.heredocState.lines,
       delimiter,
-    ].join('\n');
+    ].join("\n");
 
     // Reset state before executing
-    this.heredocState = { active: false, delimiter: '', command: '', lines: [] };
+    this.heredocState = {
+      active: false,
+      delimiter: "",
+      command: "",
+      lines: [],
+    };
 
     // Execute the heredoc command
     const result = await this.executeCommand(fullCommand);
@@ -130,18 +165,20 @@ export class CommandExecutor {
    * Get the current heredoc command being built (for display purposes)
    */
   getHeredocCommand(): string {
-    if (!this.heredocState.active) return '';
-    return [
-      this.heredocState.command,
-      ...this.heredocState.lines,
-    ].join('\n');
+    if (!this.heredocState.active) return "";
+    return [this.heredocState.command, ...this.heredocState.lines].join("\n");
   }
 
   /**
    * Reset heredoc state (useful for error handling)
    */
   resetHeredoc(): void {
-    this.heredocState = { active: false, delimiter: '', command: '', lines: [] };
+    this.heredocState = {
+      active: false,
+      delimiter: "",
+      command: "",
+      lines: [],
+    };
   }
 
   /**
@@ -151,7 +188,7 @@ export class CommandExecutor {
     try {
       const output = execSync(command, {
         cwd: this.workingDir,
-        encoding: 'utf-8',
+        encoding: "utf-8",
       });
       return { success: true, output: output.trim() };
     } catch (error: any) {
@@ -174,18 +211,21 @@ export class CommandExecutor {
       };
 
       // Track specific actions
-      if (command.startsWith('cat >') || command.includes('>> ')) {
+      if (command.startsWith("cat >") || command.includes(">> ")) {
         updates.codeWritten = true;
         const fileName = this.extractFileName(command);
         await this.addCompletedStep(
           this.workingDir,
-          `Created/modified file: ${fileName}`
+          `Created/modified file: ${fileName}`,
         );
-      } else if (command.startsWith('git commit')) {
+      } else if (command.startsWith("git commit")) {
         updates.committed = true;
-        await this.addCompletedStep(this.workingDir, 'Committed code to git');
-      } else if (command.startsWith('mkdir')) {
-        await this.addCompletedStep(this.workingDir, `Created directory: ${command}`);
+        await this.addCompletedStep(this.workingDir, "Committed code to git");
+      } else if (command.startsWith("mkdir")) {
+        await this.addCompletedStep(
+          this.workingDir,
+          `Created directory: ${command}`,
+        );
       }
 
       await this.updateProgress(this.workingDir, updates);
@@ -200,9 +240,9 @@ export class CommandExecutor {
   extractFileName(command: string): string {
     const fileMatch = command.match(/cat\s*>\s*(\S+)|echo.*>\s*(\S+)/);
     if (fileMatch) {
-      return fileMatch[1] || fileMatch[2] || 'file';
+      return fileMatch[1] || fileMatch[2] || "file";
     }
-    return 'file';
+    return "file";
   }
 
   /**
@@ -210,7 +250,7 @@ export class CommandExecutor {
    */
   getMessageForAgent(command: string, result: CommandResult): string {
     if (result.success) {
-      return `I ran: ${command}\nOutput: ${result.output || '(success)'}`;
+      return `I ran: ${command}\nOutput: ${result.output || "(success)"}`;
     } else {
       return `I ran: ${command}\nError: ${result.output}`;
     }

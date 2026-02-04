@@ -199,7 +199,11 @@ export async function runTutorLoop(
     // Don't use Typer Shark for heredoc continuation lines
     // Lazy load golden code if not already loaded
     let currentExpectedCode = goldenCodeManager.getCurrentCode();
-    if (!currentExpectedCode && !commandExecutor.isHeredocActive() && segment?.goldenCode) {
+    if (
+      !currentExpectedCode &&
+      !commandExecutor.isHeredocActive() &&
+      segment?.goldenCode
+    ) {
       currentExpectedCode = await goldenCodeManager.loadCurrentStep();
     }
 
@@ -282,13 +286,17 @@ export async function runTutorLoop(
     }
     // Handle heredoc continuation
     if (commandExecutor.isHeredocActive()) {
-      if (input.trim() === commandExecutor['heredocState'].delimiter) {
+      if (input.trim() === commandExecutor["heredocState"].delimiter) {
         // End of heredoc - execute full command
         const cmdResult = await commandExecutor.completeHeredoc(input.trim());
-        
+
         if (cmdResult) {
-          const fullCommand = commandExecutor.getHeredocCommand() + '\n' + input.trim();
-          displayCommand(fullCommand.split("\n")[0] + " ...", cmdResult.success);
+          const fullCommand =
+            commandExecutor.getHeredocCommand() + "\n" + input.trim();
+          displayCommand(
+            fullCommand.split("\n")[0] + " ...",
+            cmdResult.success,
+          );
           displayCommandOutput(cmdResult.output);
 
           // Send to Claude
@@ -297,16 +305,20 @@ export async function runTutorLoop(
             : `I ran a heredoc command:\n${fullCommand}\nError: ${cmdResult.output}`;
 
           try {
-            const result = await agentCaller.callAgent(messageToSend, messages, {
-              curriculum,
-              state,
-              segment: segment!,
-              segmentIndex: state.currentSegmentIndex,
-              previousSummary,
-              onSegmentComplete: (summary) => {
-                previousSummary = summary;
+            const result = await agentCaller.callAgent(
+              messageToSend,
+              messages,
+              {
+                curriculum,
+                state,
+                segment: segment!,
+                segmentIndex: state.currentSegmentIndex,
+                previousSummary,
+                onSegmentComplete: (summary) => {
+                  previousSummary = summary;
+                },
               },
-            });
+            );
             messages = result.messages;
             // Note: Step advancement now happens in Typer Shark completion
             // Load next step from plan (if not already loaded)
