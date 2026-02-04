@@ -1,10 +1,10 @@
-import type { Segment, Progress } from '../types.js';
-import type { ExtractedCode } from '../input.js';
+import type { Segment, Progress } from "../types.js";
+import type { ExtractedCode } from "../input.js";
 import {
   goldenCodeToExtractedCode,
   getGoldenCodeStepCount,
   hasMoreGoldenSteps,
-} from '../golden-code.js';
+} from "../golden-code.js";
 
 /**
  * Manages golden code step progression and state.
@@ -18,13 +18,16 @@ export class GoldenCodeManager {
   private currentExpectedCode: ExtractedCode | null = null;
   private segment: Segment | null;
   private projectDir: string;
-  private updateProgress: (workingDir: string, updates: any) => Promise<Progress>;
+  private updateProgress: (
+    workingDir: string,
+    updates: any,
+  ) => Promise<Progress>;
 
   constructor(
     segment: Segment | null,
     projectDir: string,
     updateProgress: (workingDir: string, updates: any) => Promise<Progress>,
-    initialIndex: number = 0
+    initialIndex: number = 0,
   ) {
     this.segment = segment;
     this.projectDir = projectDir;
@@ -60,7 +63,7 @@ export class GoldenCodeManager {
     // Load the step at currentIndex (fixes off-by-one bug - no +1 here!)
     this.currentExpectedCode = goldenCodeToExtractedCode(
       this.segment.goldenCode,
-      this.currentIndex
+      this.currentIndex,
     );
 
     return this.currentExpectedCode;

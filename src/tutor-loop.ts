@@ -188,7 +188,7 @@ export async function runTutorLoop(
     segment,
     curriculum.workingDirectory,
     updateProgress,
-    progress.currentGoldenStep || 0
+    progress.currentGoldenStep || 0,
   );
 
   // Setup SIGINT handler to save progress on Ctrl+C
@@ -334,9 +334,7 @@ export async function runTutorLoop(
 
     // Detect mode change during input (user pressed Shift+Tab)
     const modeAfterInput = getMode();
-    if (
-      modeBeforeInput !== modeAfterInput
-    ) {
+    if (modeBeforeInput !== modeAfterInput) {
       if (isTutorMode() && segment?.goldenCode) {
         // Reload current step from plan when switching to tutor mode
         await goldenCodeManager.loadCurrentStep();
@@ -548,7 +546,11 @@ export async function runTutorLoop(
       messages = result.messages;
       // Note: Step advancement now happens in Typer Shark completion
       // Load next step from plan (if not already loaded)
-      if (isTutorMode() && segment?.goldenCode && !goldenCodeManager.getCurrentCode()) {
+      if (
+        isTutorMode() &&
+        segment?.goldenCode &&
+        !goldenCodeManager.getCurrentCode()
+      ) {
         await goldenCodeManager.loadCurrentStep();
       } else if (isDiscussMode()) {
         goldenCodeManager.clear();

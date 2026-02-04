@@ -116,7 +116,7 @@ export async function saveCurriculum(curriculum: Curriculum): Promise<string> {
 export async function updateSegmentGoldenCode(
   curriculum: Curriculum,
   segmentIndex: number,
-  newGoldenCode: string
+  newGoldenCode: string,
 ): Promise<void> {
   const segment = curriculum.segments[segmentIndex];
   if (!segment) return;
@@ -176,22 +176,28 @@ const PROGRESS_FILE = ".tutor-progress.json";
 /**
  * Load progress from project directory
  */
-export async function loadProgress(projectDir: string): Promise<Progress | null> {
+export async function loadProgress(
+  projectDir: string,
+): Promise<Progress | null> {
   try {
     const progressPath = path.join(projectDir, PROGRESS_FILE);
     const data = await fs.readFile(progressPath, "utf-8");
     const parsed = JSON.parse(data);
-    
+
     // Check for version 1 (or missing version) and warn
     if (!parsed.version || parsed.version < 2) {
-      console.warn('\n⚠️  Warning: Your progress file is using an old format (version 1).');
-      console.warn('   Run "npx claude-tutor migrate-progress" to upgrade to version 2.');
-      console.warn('   This format will be deprecated in a future release.\n');
-      
+      console.warn(
+        "\n⚠️  Warning: Your progress file is using an old format (version 1).",
+      );
+      console.warn(
+        '   Run "npx claude-tutor migrate-progress" to upgrade to version 2.',
+      );
+      console.warn("   This format will be deprecated in a future release.\n");
+
       // Add version field for backwards compatibility
       parsed.version = parsed.version || 1;
     }
-    
+
     return ProgressSchema.parse(parsed);
   } catch {
     return null;
@@ -201,7 +207,10 @@ export async function loadProgress(projectDir: string): Promise<Progress | null>
 /**
  * Save progress to project directory
  */
-export async function saveProgress(projectDir: string, progress: Progress): Promise<void> {
+export async function saveProgress(
+  projectDir: string,
+  progress: Progress,
+): Promise<void> {
   const progressPath = path.join(projectDir, PROGRESS_FILE);
   progress.lastUpdatedAt = new Date().toISOString();
   await fs.writeFile(progressPath, JSON.stringify(progress, null, 2));
@@ -210,7 +219,10 @@ export async function saveProgress(projectDir: string, progress: Progress): Prom
 /**
  * Create initial progress for a segment
  */
-export function createInitialProgress(segmentId: string, segmentIndex: number): Progress {
+export function createInitialProgress(
+  segmentId: string,
+  segmentIndex: number,
+): Progress {
   return {
     version: 2,
     currentSegmentId: segmentId,
