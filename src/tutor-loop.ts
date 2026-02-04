@@ -16,18 +16,7 @@ import {
   createInitialMessages,
   pruneContextForNewSegment,
 } from "./agent.js";
-import {
-  createTyperSharkInput,
-  createMultiLineTyperSharkInput,
-  createFreeFormInput,
-  type ExtractedCode,
-} from "./input.js";
 import { isDiscussMode, isBlockMode, isTutorMode, getMode } from "./mode.js";
-import {
-  goldenCodeToExtractedCode,
-  getGoldenCodeStepCount,
-  hasMoreGoldenSteps,
-} from "./golden-code.js";
 import {
   displaySegmentHeader,
   displayTutorText,
