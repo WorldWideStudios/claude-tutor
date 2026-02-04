@@ -1,5 +1,7 @@
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
 import type { Curriculum, TutorState, Progress, Segment } from "../types.js";
+import { callProjectCompleteEndpoint } from "../auth.js";
+import { displayInfo } from "../display.js";
 
 /**
  * Result of segment completion handling
@@ -102,6 +104,16 @@ export class SegmentLifecycleManager {
           completedSegments: state.completedSegments,
         },
       });
+
+      // Notify backend of project completion
+      try {
+        await callProjectCompleteEndpoint();
+      } catch (error: any) {
+        displayInfo(
+          "⚠️  Could not notify backend of completion. Continuing...",
+        );
+      }
+
       this.callbacks.displayCurriculumComplete(curriculum);
 
       return {

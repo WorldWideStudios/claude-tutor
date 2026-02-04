@@ -9,6 +9,13 @@ import {
 import type { InitResponse, ResumeResponse } from "./types.js";
 
 /**
+ * Response from /cli/completed endpoint
+ */
+export interface ProjectCompleteResponse {
+  success: boolean;
+}
+
+/**
  * API Configuration
  */
 export const API_HOSTNAME =
@@ -83,6 +90,29 @@ export async function callResumeEndpoint(): Promise<ResumeResponse> {
 
   const data = await response.json();
   return data as ResumeResponse;
+}
+
+/**
+ * Call /cli/completed to notify backend of project completion
+ */
+export async function callProjectCompleteEndpoint(): Promise<ProjectCompleteResponse> {
+  const config = await loadConfig();
+
+  if (!config) {
+    throw new Error("No config found. Please run 'claude-tutor login' first.");
+  }
+
+  const response = await callAPI("/cli/completed", {
+    method: "POST",
+    body: JSON.stringify({ token: config.apiKey }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Project complete endpoint failed: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data as ProjectCompleteResponse;
 }
 
 /**
