@@ -14,6 +14,11 @@ export interface InitResponse {
   question: string;
 }
 
+// Resume endpoint response
+export interface ResumeResponse {
+  success: boolean;
+}
+
 // Checkpoint within a segment
 export const CheckpointSchema = z.object({
   id: z.string(),

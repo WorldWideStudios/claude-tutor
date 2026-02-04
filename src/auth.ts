@@ -6,7 +6,7 @@ import {
   displayQuestionPrompt,
   closeQuestionPrompt,
 } from "./display.js";
-import type { InitResponse } from "./types.js";
+import type { InitResponse, ResumeResponse } from "./types.js";
 
 /**
  * API Configuration
@@ -60,6 +60,29 @@ export async function callInitEndpoint(): Promise<InitResponse> {
 
   const data = await response.json();
   return data as InitResponse;
+}
+
+/**
+ * Call /cli/resume to notify backend of session resume
+ */
+export async function callResumeEndpoint(): Promise<ResumeResponse> {
+  const config = await loadConfig();
+
+  if (!config) {
+    throw new Error("No config found. Please run 'claude-tutor login' first.");
+  }
+
+  const response = await callAPI("/cli/resume", {
+    method: "POST",
+    body: JSON.stringify({ token: config.apiKey }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Resume endpoint failed: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data as ResumeResponse;
 }
 
 /**

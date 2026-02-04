@@ -20,6 +20,7 @@ import {
   stopLoading,
   updateLoadingStatus,
   newLine,
+  displayResume,
 } from "./display.js";
 import type { ProjectLoadResult, LearnerProfile } from "./types.js";
 import { askClarifyingQuestions, type QuestionContext } from "./questions.js";
@@ -101,6 +102,35 @@ export async function promptToResumeProject(
   }
 
   return shouldResume;
+}
+
+/**
+ * Resume an existing project
+ * Handles the entire resume flow: backend notification, user confirmation, and starting tutor loop
+ * Returns true if project was resumed, false if user declined
+ */
+export async function resumeExistingProject(
+  curriculum: any,
+  state: any,
+): Promise<boolean> {
+  // Notify backend of resume
+  const { callResumeEndpoint } = await import("./auth.js");
+  await callResumeEndpoint();
+
+  // Prompt user to confirm
+  const shouldResume = await promptToResumeProject(curriculum, state);
+
+  if (!shouldResume) {
+    return false;
+  }
+
+  // Display resume info and start
+  displayResume(curriculum, state);
+
+  const { runTutorLoop } = await import("./tutor-loop.js");
+  await runTutorLoop(curriculum, state);
+
+  return true;
 }
 
 /**

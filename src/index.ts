@@ -34,7 +34,7 @@ import { Command } from "commander";
 import { configExists, saveConfig } from "./storage.js";
 import {
   loadExistingProject,
-  promptToResumeProject,
+  resumeExistingProject,
   setupNewProject,
 } from "./project-lifecycle.js";
 
@@ -128,11 +128,8 @@ async function startCommand(projectDir: string | undefined): Promise<void> {
 
     if (existingProject) {
       const { curriculum, state } = existingProject;
-      const shouldResume = await promptToResumeProject(curriculum, state);
-
-      if (shouldResume) {
-        displayResume(curriculum, state);
-        await runTutorLoop(curriculum, state);
+      const resumed = await resumeExistingProject(curriculum, state);
+      if (resumed) {
         return;
       }
     }
@@ -165,18 +162,13 @@ async function resumeCommand(projectDir?: string): Promise<void> {
 
     const { curriculum, state } = existingProject;
 
-    // Always prompt before resuming
-    const shouldResume = await promptToResumeProject(curriculum, state);
+    // Resume the project
+    const resumed = await resumeExistingProject(curriculum, state);
 
-    if (!shouldResume) {
+    if (!resumed) {
       displayInfo("Resume cancelled.");
       process.exit(0);
     }
-
-    displayResume(curriculum, state);
-
-    // Start the tutor loop (preflight checks now happen inside runTutorLoop)
-    await runTutorLoop(curriculum, state);
   } catch (error: any) {
     displayError(error.message);
     process.exit(1);
