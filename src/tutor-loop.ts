@@ -51,6 +51,7 @@ import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
 import type { Curriculum, TutorState, Progress } from "./types.js";
 import { execSync } from "child_process";
 import { runPreflightChecks } from "./preflight.js";
+import { AgentCaller } from "./tutor-loop/agent-caller.js";
 
 // Shell commands that should be executed directly
 const SHELL_COMMANDS = [
@@ -150,6 +151,18 @@ export async function runTutorLoop(
   // because it adds an internal data listener that interferes with our
   // raw mode input handlers, causing doubled character input.
 
+  // Setup agent caller with SIGINT handler
+  const agentCaller = new AgentCaller({
+    runAgentTurn,
+    displayText: displayTutorText,
+    displayToolStatus,
+    displayError,
+    startLoading,
+    stopLoading,
+    setAgentRunning,
+    resetStreamState,
+  });
+
   // Get current segment
   let segment = getCurrentSegment(curriculum, state.currentSegmentIndex);
   if (!segment) {
@@ -171,41 +184,36 @@ export async function runTutorLoop(
     await saveProgress(curriculum.workingDirectory, progress);
   }
 
+  // Setup SIGINT handler to save progress on Ctrl+C
+  agentCaller.setupSigintHandler({
+    saveState,
+    saveProgress,
+    readlineClose: () => rl.close(),
+    state,
+    workingDirectory: curriculum.workingDirectory,
+    progress,
+  });
+
   displaySegmentHeader(curriculum, segment, state.currentSegmentIndex);
 
   // Send initial "start" or "resume" message to kick off the segment
   try {
-    resetStreamState();
-    setAgentRunning(true);
-    startLoading();
-    let loadingStopped = false;
     const startMessage = isResuming ? "resume" : "start";
-    const result = await runAgentTurn(startMessage, messages, {
+    const result = await agentCaller.callAgent(startMessage, messages, {
       curriculum,
       state,
       segment,
       segmentIndex: state.currentSegmentIndex,
       previousSummary,
       progress: isResuming ? progress : undefined, // Only pass progress if resuming
-      onText: (text) => {
-        if (!loadingStopped) {
-          stopLoading();
-          loadingStopped = true;
-        }
-        displayTutorText(text);
-      },
-      onToolUse: (toolName, status) => displayToolStatus(toolName, status),
       onSegmentComplete: (summary) => {
         const nextSegment = getCurrentSegment(
           curriculum,
           state.currentSegmentIndex + 1,
         );
-        displaySegmentComplete(summary, nextSegment?.title);
+        displaySegmentComplete(summary || '', nextSegment?.title);
       },
     });
-    console.log("up above");
-    if (!loadingStopped) stopLoading();
-    setAgentRunning(false);
     messages = result.messages;
     // Initialize golden step index but DON'T pre-load code yet
     // Let the first input prompt load the appropriate step based on tutor context
@@ -224,8 +232,6 @@ export async function runTutorLoop(
     }
     newLine();
   } catch (error: any) {
-    stopLoading();
-    setAgentRunning(false);
     displayError(`Failed to start segment: ${error.message}`);
     rl.close();
     process.exit(1);
@@ -256,12 +262,10 @@ export async function runTutorLoop(
     // Don't use Typer Shark for heredoc continuation lines
     // Lazy load golden code if not already loaded
     if (!currentExpectedCode && !heredocState.active && segment?.goldenCode) {
-      console.log("setting here", currentGoldenStepIndex);
       currentExpectedCode = goldenCodeToExtractedCode(
         segment.goldenCode,
         currentGoldenStepIndex + 1,
       );
-      // console.log("setting here", currentExpectedCode, );
     }
 
     if (currentExpectedCode && !heredocState.active) {
@@ -401,31 +405,16 @@ export async function runTutorLoop(
           : `I ran a heredoc command:\n${fullCommand}\nError: ${cmdResult.output}`;
 
         try {
-          resetStreamState();
-          setAgentRunning(true);
-          startLoading();
-          let loadingStopped = false;
-          const result = await runAgentTurn(messageToSend, messages, {
+          const result = await agentCaller.callAgent(messageToSend, messages, {
             curriculum,
             state,
             segment: segment!,
             segmentIndex: state.currentSegmentIndex,
             previousSummary,
-            onText: (text) => {
-              if (!loadingStopped) {
-                stopLoading();
-                loadingStopped = true;
-              }
-              displayTutorText(text);
-            },
-            onToolUse: (toolName, status) =>
-              displayToolStatus(toolName, status),
             onSegmentComplete: (summary) => {
               previousSummary = summary;
             },
           });
-          if (!loadingStopped) stopLoading();
-          setAgentRunning(false);
           messages = result.messages;
           // Note: Step advancement now happens in Typer Shark completion
           // Load next step from plan (if not already loaded)
@@ -437,8 +426,8 @@ export async function runTutorLoop(
           }
           newLine();
         } catch (error: any) {
-          stopLoading();
-          setAgentRunning(false);
+          // Reset heredoc state on error
+          heredocState = { active: false, delimiter: "", command: "", lines: [] };
           displayError(error.message);
         }
         continue;
@@ -460,11 +449,7 @@ export async function runTutorLoop(
     // Empty Enter = continue signal
     if (!userInput) {
       try {
-        resetStreamState();
-        setAgentRunning(true);
-        startLoading();
-        let loadingStopped = false;
-        const result = await runAgentTurn(
+        const result = await agentCaller.callAgent(
           "(user pressed Enter to continue)",
           messages,
           {
@@ -473,22 +458,11 @@ export async function runTutorLoop(
             segment: segment!,
             segmentIndex: state.currentSegmentIndex,
             previousSummary,
-            onText: (text) => {
-              if (!loadingStopped) {
-                stopLoading();
-                loadingStopped = true;
-              }
-              displayTutorText(text);
-            },
-            onToolUse: (toolName, status) =>
-              displayToolStatus(toolName, status),
             onSegmentComplete: (summary) => {
               previousSummary = summary;
             },
           },
         );
-        if (!loadingStopped) stopLoading();
-        setAgentRunning(false);
         messages = result.messages;
         // Reload current step from plan (don't advance on Enter)
         if (isTutorMode() && segment && segment.goldenCode) {
@@ -502,8 +476,6 @@ export async function runTutorLoop(
         newLine();
         continue;
       } catch (error: any) {
-        stopLoading();
-        setAgentRunning(false);
         displayError(error.message);
         continue;
       }
@@ -584,30 +556,16 @@ export async function runTutorLoop(
     }
 
     try {
-      resetStreamState();
-      setAgentRunning(true);
-      startLoading();
-      let loadingStopped = false;
-      const result = await runAgentTurn(messageToSend, messages, {
+      const result = await agentCaller.callAgent(messageToSend, messages, {
         curriculum,
         state,
         segment: segment!,
         segmentIndex: state.currentSegmentIndex,
         previousSummary,
-        onText: (text) => {
-          if (!loadingStopped) {
-            stopLoading();
-            loadingStopped = true;
-          }
-          displayTutorText(text);
-        },
-        onToolUse: (toolName, status) => displayToolStatus(toolName, status),
         onSegmentComplete: (summary) => {
           previousSummary = summary;
         },
       });
-      if (!loadingStopped) stopLoading();
-      setAgentRunning(false);
 
       messages = result.messages;
       // Note: Step advancement now happens in Typer Shark completion
@@ -693,30 +651,16 @@ export async function runTutorLoop(
         displaySegmentHeader(curriculum, segment, state.currentSegmentIndex);
 
         // Kick off new segment
-        resetStreamState();
-        setAgentRunning(true);
-        startLoading();
-        let newLoadingStopped = false;
-        const newResult = await runAgentTurn("start", messages, {
+        const newResult = await agentCaller.callAgent("start", messages, {
           curriculum,
           state,
           segment,
           segmentIndex: state.currentSegmentIndex,
           previousSummary,
-          onText: (text) => {
-            if (!newLoadingStopped) {
-              stopLoading();
-              newLoadingStopped = true;
-            }
-            displayTutorText(text);
-          },
-          onToolUse: (toolName, status) => displayToolStatus(toolName, status),
           onSegmentComplete: (summary) => {
             previousSummary = summary;
           },
         });
-        if (!newLoadingStopped) stopLoading();
-        setAgentRunning(false);
         messages = newResult.messages;
         // Reset golden step index for new segment and load from plan
         currentGoldenStepIndex = 0;
@@ -733,8 +677,6 @@ export async function runTutorLoop(
         newLine();
       }
     } catch (error: any) {
-      stopLoading();
-      setAgentRunning(false);
       displayError(error.message);
     }
   }

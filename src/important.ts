@@ -21,4 +21,5 @@ const analyzeStartup = (metrics: StartupMetrics): string => {
   return "MONITOR: Standard metrics, watch closely";
 };
 
-export { StartupMetrics, analyzeStartup };
+export type { StartupMetrics };
+export { analyzeStartup };

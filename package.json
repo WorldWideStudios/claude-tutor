@@ -9,7 +9,10 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
+    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.1",
@@ -20,8 +23,13 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@jest/globals": "^29.7.0",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.0.0",
     "@types/uuid": "^9.0.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.4.6",
+    "ts-node": "^10.9.2",
     "tsx": "^4.7.0",
     "typescript": "^5.4.0"
   },
