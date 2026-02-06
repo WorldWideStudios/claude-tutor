@@ -1,0 +1,175 @@
+{
+  "id": "2b3875ad-7d06-4885-8f7e-e013f221eb98",
+  "projectName": "I want to do sorting algorithms but in as few lines of code as possible, should be simple cli scripts",
+  "projectGoal": "I want to do sorting algorithms but in as few lines of code as possible, should be simple cli scripts",
+  "workingDirectory": "/Users/dylanholland/.claude-tutor/projects/i-want-to-do-sorting-algorithms-but-in-as-few-line-mlb4zc2q",
+  "segments": [
+    {
+      "id": "c894cb14-1a28-433f-b28a-d75ee55a42a9",
+      "type": "build",
+      "title": "CLI Setup with Array Input Parsing",
+      "goldenCode": "mkdir -p src\ncat > src/sort.ts << 'EOF'\n#!/usr/bin/env npx tsx\nconst nums = process.argv.slice(2).map(Number);\nconsole.log('Input:', nums);\nconsole.log('Sorted:', nums.sort((a, b) => a - b));\nEOF",
+      "targetFile": "src/sort.ts",
+      "explanation": "We start with a minimal CLI that parses numbers from command line arguments and uses JavaScript's built-in sort as our foundation.",
+      "engineeringFocus": "Command-line argument parsing and functional array methods for concise input handling",
+      "checkpoints": [
+        {
+          "id": "4351a8a2-f4ae-457f-8c96-1a207884f584",
+          "description": "CLI accepts space-separated numbers",
+          "completed": false
+        },
+        {
+          "id": "0b14310a-fe2e-438d-af94-20601d73825b",
+          "description": "Outputs both input and sorted arrays",
+          "completed": false
+        },
+        {
+          "id": "3ec9440f-5bb1-4f86-8628-7eb5b8e7c5bf",
+          "description": "Uses built-in sort with custom comparator",
+          "completed": false
+        }
+      ]
+    },
+    {
+      "id": "45d49c9e-8d45-4f81-a282-89764ba300c9",
+      "type": "build",
+      "title": "Bubble Sort with Destructuring Swaps",
+      "goldenCode": "cat > src/bubble.ts << 'EOF'\n#!/usr/bin/env npx tsx\nconst bubble = (arr: number[]) => {\n  for (let i = 0; i < arr.length; i++)\n    for (let j = 0; j < arr.length - i - 1; j++)\n      if (arr[j] > arr[j + 1]) [arr[j], arr[j + 1]] = [arr[j + 1], arr[j]];\n  return arr;\n};\n\nconst nums = process.argv.slice(2).map(Number);\nconsole.log(bubble([...nums]));\nEOF",
+      "targetFile": "src/bubble.ts",
+      "explanation": "We implement bubble sort using destructuring assignment for swaps, demonstrating how modern JavaScript features enable more elegant implementations.",
+      "engineeringFocus": "Destructuring assignment for swaps and array spread operator for immutability",
+      "checkpoints": [
+        {
+          "id": "b994cadb-aefe-4a88-a6f1-4a283b1a0bdb",
+          "description": "Bubble sort implemented with nested loops",
+          "completed": false
+        },
+        {
+          "id": "c7561b9f-7c39-4cef-b9e1-692856d7dc46",
+          "description": "Uses destructuring for elegant swapping",
+          "completed": false
+        },
+        {
+          "id": "9b28d54a-2d8b-4951-9da1-3d2ade13705d",
+          "description": "Preserves original array with spread operator",
+          "completed": false
+        }
+      ]
+    },
+    {
+      "id": "1415100d-41b7-4a2f-b1e2-211f654b3bb1",
+      "type": "build",
+      "title": "Quick Sort with Concise Partitioning",
+      "goldenCode": "cat > src/quick.ts << 'EOF'\n#!/usr/bin/env npx tsx\nconst quick = (arr: number[]): number[] => \n  arr.length <= 1 ? arr : [\n    ...quick(arr.slice(1).filter(x => x <= arr[0])),\n    arr[0],\n    ...quick(arr.slice(1).filter(x => x > arr[0]))\n  ];\n\nconst nums = process.argv.slice(2).map(Number);\nconsole.log(quick(nums));\nEOF",
+      "targetFile": "src/quick.ts",
+      "explanation": "We implement quicksort using functional programming principles with array methods, creating an extremely concise recursive solution.",
+      "engineeringFocus": "Functional programming with array methods and ternary operators for minimal, readable recursion",
+      "checkpoints": [
+        {
+          "id": "1fff42de-9281-48ac-8bdd-38865a98640c",
+          "description": "Quicksort implemented as pure function",
+          "completed": false
+        },
+        {
+          "id": "b2848447-0264-494c-a71f-4b3fc0dfc004",
+          "description": "Uses array filter and spread for partitioning",
+          "completed": false
+        },
+        {
+          "id": "9a6a4067-ca42-40a3-b34b-a7082f47be0d",
+          "description": "Recursive calls in single expression",
+          "completed": false
+        }
+      ]
+    },
+    {
+      "id": "074910ea-af16-4bde-9e02-c6cc830f8417",
+      "type": "refactor",
+      "title": "Optimize Quick Sort Memory Usage",
+      "startingCode": "const quick = (arr: number[]): number[] => \n  arr.length <= 1 ? arr : [\n    ...quick(arr.slice(1).filter(x => x <= arr[0])),\n    arr[0],\n    ...quick(arr.slice(1).filter(x => x > arr[0]))\n  ];",
+      "goldenCode": "cat > src/quick.ts << 'EOF'\n#!/usr/bin/env npx tsx\nconst quick = (arr: number[]): number[] => {\n  if (arr.length <= 1) return arr;\n  const [pivot, ...rest] = arr;\n  const [left, right] = rest.reduce((acc, x) => (acc[+(x > pivot)].push(x), acc), [[], []] as number[][]);\n  return [...quick(left), pivot, ...quick(right)];\n};\n\nconst nums = process.argv.slice(2).map(Number);\nconsole.log(quick(nums));\nEOF",
+      "targetFile": "src/quick.ts",
+      "problem": "The original version filters the array twice, creating unnecessary iterations and temporary arrays",
+      "lesson": "Using reduce with destructuring and array indexing tricks to partition in a single pass while maintaining conciseness",
+      "checkpoints": [
+        {
+          "id": "06eda053-23c4-4ed8-973a-e6d9e05c3d43",
+          "description": "Single pass partitioning with reduce",
+          "completed": false
+        },
+        {
+          "id": "e4fa0b73-264d-4b6b-ae8d-537f3f651474",
+          "description": "Uses destructuring assignment for pivot separation",
+          "completed": false
+        },
+        {
+          "id": "4f9bbd43-0b30-44e4-a787-6cabbe6ef971",
+          "description": "Maintains functional style with improved efficiency",
+          "completed": false
+        }
+      ]
+    },
+    {
+      "id": "5979acf7-104e-4ffa-aa1e-52f6ea8b8ab9",
+      "type": "build",
+      "title": "Merge Sort with Recursive Array Splitting",
+      "goldenCode": "cat > src/merge.ts << 'EOF'\n#!/usr/bin/env npx tsx\nconst merge = (left: number[], right: number[]): number[] =>\n  !left.length ? right : !right.length ? left :\n  left[0] <= right[0] ? [left[0], ...merge(left.slice(1), right)] :\n  [right[0], ...merge(left, right.slice(1))];\n\nconst mergeSort = (arr: number[]): number[] =>\n  arr.length <= 1 ? arr : merge(\n    mergeSort(arr.slice(0, arr.length / 2)),\n    mergeSort(arr.slice(arr.length / 2))\n  );\n\nconst nums = process.argv.slice(2).map(Number);\nconsole.log(mergeSort(nums));\nEOF",
+      "targetFile": "src/merge.ts",
+      "explanation": "We implement merge sort with nested ternary operators and recursive array slicing, showcasing how complex algorithms can be expressed concisely.",
+      "engineeringFocus": "Nested ternary operators and recursive function composition for elegant divide-and-conquer algorithms",
+      "checkpoints": [
+        {
+          "id": "256a7dda-f1f4-4507-b8be-913c194316e1",
+          "description": "Merge sort split into merge and sort functions",
+          "completed": false
+        },
+        {
+          "id": "0c2853d2-eb6b-40ba-b5a9-8e3a128d2192",
+          "description": "Uses chained ternary operators for merge logic",
+          "completed": false
+        },
+        {
+          "id": "54bd8660-b298-496e-a080-db31f6917cce",
+          "description": "Recursive array slicing for divide-and-conquer",
+          "completed": false
+        }
+      ]
+    },
+    {
+      "id": "d1123dd7-ecc1-42a9-a9e8-3ef8f32f4d42",
+      "type": "build",
+      "title": "Algorithm Comparison CLI",
+      "goldenCode": "cat > src/compare.ts << 'EOF'\n#!/usr/bin/env npx tsx\nconst bubble = (arr: number[]) => { for (let i = 0; i < arr.length; i++) for (let j = 0; j < arr.length - i - 1; j++) if (arr[j] > arr[j + 1]) [arr[j], arr[j + 1]] = [arr[j + 1], arr[j]]; return arr; };\nconst quick = (arr: number[]): number[] => { if (arr.length <= 1) return arr; const [pivot, ...rest] = arr; const [left, right] = rest.reduce((acc, x) => (acc[+(x > pivot)].push(x), acc), [[], []] as number[][]); return [...quick(left), pivot, ...quick(right)]; };\nconst merge = (l: number[], r: number[]): number[] => !l.length ? r : !r.length ? l : l[0] <= r[0] ? [l[0], ...merge(l.slice(1), r)] : [r[0], ...merge(l, r.slice(1))];\nconst mergeSort = (arr: number[]): number[] => arr.length <= 1 ? arr : merge(mergeSort(arr.slice(0, arr.length / 2)), mergeSort(arr.slice(arr.length / 2)));\n\nconst nums = process.argv.slice(2).map(Number);\nconst algorithms = { bubble, quick, mergeSort };\nObject.entries(algorithms).forEach(([name, fn]) => \n  console.log(`${name}: [${fn([...nums]).join(', ')}]`)\n);\nEOF",
+      "targetFile": "src/compare.ts",
+      "explanation": "We combine all algorithms into a comparison tool, demonstrating how to structure multiple sorting implementations in a single, ultra-compact CLI.",
+      "engineeringFocus": "Object-oriented algorithm organization and functional iteration patterns for clean, extensible code architecture",
+      "checkpoints": [
+        {
+          "id": "524f6dda-4e11-460f-8d24-ae705ead4670",
+          "description": "All three algorithms in one file",
+          "completed": false
+        },
+        {
+          "id": "a498d12a-0478-47de-b74a-6ec64bd06f1d",
+          "description": "Dynamic algorithm execution with Object.entries",
+          "completed": false
+        },
+        {
+          "id": "29def92a-fa59-4ee9-8747-bd3572253670",
+          "description": "Consistent output format for easy comparison",
+          "completed": false
+        }
+      ]
+    }
+  ],
+  "learnerProfile": {
+    "projectIdea": "Implement classic sorting algorithms (bubble, selection, insertion sort) as concise CLI scripts that prioritize elegance and readability over extreme brevity",
+    "experienceLevel": "Intermediate - comfortable with fundamentals but wants to learn advanced techniques for writing more concise, elegant code",
+    "projectType": "CLI applications/scripts",
+    "projectGoals": "Learn to write elegant, concise implementations of sorting algorithms that balance brevity with readability, while mastering the core logic of classic sorting methods",
+    "technicalContext": "Has solid fundamentals with git workflow and project setup, currently prefers verbose/readable code style but wants to develop skills in concise programming",
+    "constraints": "Focus on minimal lines of code while maintaining readability, simple CLI script format",
+    "profileSummary": "An intermediate developer who values code clarity and wants to develop skills in writing elegant, concise sorting algorithm implementations. They're interested in the artistic balance between brevity and readability, using classic algorithms as a vehicle to learn advanced language features and more sophisticated coding techniques."
+  },
+  "createdAt": "2026-02-06T17:06:03.029Z"
+}
