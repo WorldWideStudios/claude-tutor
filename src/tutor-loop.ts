@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import * as readline from "readline";
-import { logInteraction } from "./logging.js";
+import { logInteraction, debugLog } from "./logging.js";
 import { getCurrentSegment, isCurriculumComplete } from "./curriculum.js";
 import {
   loadProgress,
@@ -127,13 +127,13 @@ export async function runTutorLoop(
     ) {
       // If not at final step, advance to next step
       if (currentStep < totalSteps - 1) {
-        console.log(
+        debugLog(
           `[TutorLoop] Resuming: current golden step ${currentStep} already complete, advancing...`,
         );
         await goldenCodeManager.advance();
       } else {
         // At final step and it's complete - clear it so it won't reload
-        console.log(
+        debugLog(
           `[TutorLoop] Resuming: final golden step ${currentStep} already complete, clearing...`,
         );
         goldenCodeManager.clear();

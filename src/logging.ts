@@ -53,3 +53,13 @@ export async function logInteraction(
     console.error("[Logging Error]", error.message);
   }
 }
+
+/**
+ * Debug logging function that only logs when DEBUG environment variable is true
+ * Usage: debugLog('[Component]', 'message', data)
+ */
+export function debugLog(...args: any[]): void {
+  if (process.env.DEBUG === 'true') {
+    console.log(...args);
+  }
+}

@@ -5,6 +5,7 @@ import {
   getGoldenCodeStepCount,
   hasMoreGoldenSteps,
 } from "../golden-code.js";
+import { debugLog } from "../logging.js";
 
 /**
  * Manages golden code step progression and state.
@@ -52,7 +53,7 @@ export class GoldenCodeManager {
 
     // Validate index bounds
     if (this.currentIndex < 0) {
-      console.log(
+      debugLog(
         `[GoldenCodeManager] Cannot load step: index ${this.currentIndex} is negative`,
       );
       this.currentExpectedCode = null;
@@ -61,7 +62,7 @@ export class GoldenCodeManager {
 
     const totalSteps = this.getTotalSteps();
     if (this.currentIndex >= totalSteps) {
-      console.log(
+      debugLog(
         `[GoldenCodeManager] Cannot load step: index ${this.currentIndex} >= totalSteps ${totalSteps}`,
       );
       this.currentExpectedCode = null;
@@ -70,13 +71,13 @@ export class GoldenCodeManager {
 
     // Prevent loading the same step twice in a row
     if (this.currentIndex === this.lastLoadedIndex) {
-      console.log(
+      debugLog(
         `[GoldenCodeManager] Skipping reload of step ${this.currentIndex} (already loaded)`,
       );
       return this.currentExpectedCode;
     }
 
-    console.log(
+    debugLog(
       `[GoldenCodeManager] Loading step ${this.currentIndex}/${totalSteps}`,
     );
 
@@ -104,14 +105,14 @@ export class GoldenCodeManager {
     if (this.hasMoreSteps()) {
       this.currentIndex++;
       this.lastLoadedIndex = -1; // Reset to allow loading the new step
-      console.log(
+      debugLog(
         `[GoldenCodeManager] Advanced to step ${this.currentIndex}/${this.getTotalSteps()}`,
       );
       await this.updateProgress(this.projectDir, {
         currentGoldenStep: this.currentIndex,
       });
     } else {
-      console.log(
+      debugLog(
         `[GoldenCodeManager] At final step ${this.currentIndex}/${this.getTotalSteps()}, not advancing`,
       );
     }
@@ -122,7 +123,7 @@ export class GoldenCodeManager {
    * Useful when switching modes or contexts.
    */
   clear(): void {
-    console.log(
+    debugLog(
       `[GoldenCodeManager] Clearing current code (index remains ${this.currentIndex})`,
     );
     this.currentExpectedCode = null;

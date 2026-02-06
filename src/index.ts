@@ -64,7 +64,13 @@ program
     "--curriculum <path>",
     "Path to curriculum JSON file (skips curriculum generation)",
   )
+  .option("--debug", "Enable debug logging")
   .action(async (options) => {
+    // Enable debug mode if flag is set or DEBUG environment variable is true
+    if (options.debug || process.env.DEBUG === 'true') {
+      process.env.DEBUG = 'true';
+    }
+
     // Check for updates and auto-update if available
     const needsRestart = await checkAndAutoUpdate();
     if (needsRestart) {

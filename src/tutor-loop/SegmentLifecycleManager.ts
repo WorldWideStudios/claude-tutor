@@ -2,6 +2,7 @@ import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
 import type { Curriculum, TutorState, Progress, Segment } from "../types.js";
 import { callProjectCompleteEndpoint } from "../auth.js";
 import { displayInfo } from "../display.js";
+import { debugLog } from "../logging.js";
 
 /**
  * Result of segment completion handling

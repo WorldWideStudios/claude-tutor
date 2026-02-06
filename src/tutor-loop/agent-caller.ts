@@ -1,5 +1,6 @@
 import type { MessageParam } from "@anthropic-ai/sdk/resources/messages";
 import type { Curriculum, TutorState, Progress, Segment } from "../types.js";
+import { debugLog } from "../logging.js";
 
 export interface AgentContext {
   curriculum: Curriculum;
@@ -122,14 +123,14 @@ export class AgentCaller {
     }
 
     process.on("SIGINT", async () => {
-      console.log("\n\nSaving progress...");
+      debugLog("\n\nSaving progress...");
 
       try {
         await Promise.all([
           config.saveState(config.state),
           config.saveProgress(config.workingDirectory, config.progress),
         ]);
-        console.log("Progress saved.");
+        debugLog("Progress saved.");
       } catch (error: any) {
         console.error("Failed to save progress:", error.message);
       }
