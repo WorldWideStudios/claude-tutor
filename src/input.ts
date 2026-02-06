@@ -1,4 +1,5 @@
 import * as readline from "readline";
+import cliCursor from "cli-cursor";
 import {
   setExpectedText,
   clearExpectedText,
@@ -26,6 +27,10 @@ import {
   isBlockMode,
   isTutorMode,
 } from "./mode.js";
+import {
+  ScrollableViewer,
+  CursorManager,
+} from "./tutor-loop/ScrollableViewer.js";
 import chalk from "chalk";
 
 // Colors for typing feedback (local duplicate for backward compatibility)
@@ -1822,18 +1827,61 @@ function getWrappedLineCount(lines: CodeLine[], codeWidth: number): number {
   return total;
 }
 
+// Module-level state for scrollable multi-line display
+let activeScrollableViewer: ScrollableViewer | null = null;
+let activeCursorManager: CursorManager | null = null;
+
 /**
- * Initialize multi-line code block display
- * Shows entire code block with line numbers, wrapping long lines
+ * Get the visual line index for a code line (accounting for comments)
+ * Each code line may have a comment line above it
  */
-function initMultiLineCodeBlock(lines: CodeLine[], explanation?: string): void {
+function getVisualLineIndex(lines: CodeLine[], codeLineIndex: number): number {
+  let visualIndex = 0;
+  for (let i = 0; i < codeLineIndex && i < lines.length; i++) {
+    if (lines[i].comment) {
+      visualIndex++; // comment line
+    }
+    visualIndex++; // code line (not counting wrap for simplicity)
+  }
+  return visualIndex;
+}
+
+/**
+ * Initialize multi-line code block display with scrollable viewport
+ * Shows code within viewport, with scroll indicators when content exceeds terminal height
+ */
+function initMultiLineCodeBlock(
+  lines: CodeLine[],
+  explanation?: string,
+  viewer?: ScrollableViewer,
+): void {
   const codeWidth = getCodeDisplayWidth();
 
-  // Calculate total visual lines needed (accounting for wrapping)
-  const wrappedTotal = getWrappedLineCount(lines, codeWidth);
+  // Initialize or use provided ScrollableViewer
+  if (!viewer) {
+    viewer = new ScrollableViewer();
+  }
+  activeScrollableViewer = viewer;
+  activeCursorManager = new CursorManager();
+
+  // Calculate total visual lines (each code line + optional comment)
+  let totalVisualLines = 0;
+  for (const line of lines) {
+    if (line.comment) totalVisualLines++;
+    totalVisualLines++; // code line itself (simplified - not counting wrap)
+  }
+  viewer.totalLines = totalVisualLines;
+
+  // Hide cursor during initial draw
+  cliCursor.hide();
+
+  // Calculate display height: viewport + UI chrome
+  // UI chrome: explanation (1) + scroll indicator top (1) + separator (1) + input (1) + bottom bar (1) + mode footer (1)
+  const uiChrome = (explanation ? 1 : 0) + 1 + 1 + 1 + 1 + 1;
+  const displayHeight = viewer.viewportHeight + uiChrome;
 
   // Add buffer lines to prevent scroll issues
-  const bufferLines = wrappedTotal + 10;
+  const bufferLines = displayHeight + 5;
   for (let i = 0; i < bufferLines; i++) {
     console.log();
   }
@@ -1841,40 +1889,16 @@ function initMultiLineCodeBlock(lines: CodeLine[], explanation?: string): void {
 
   // Show explanation if provided
   if (explanation) {
-    // Wrap explanation too if needed
-    const explainWidth = codeWidth - 3; // -3 for "// "
+    const explainWidth = codeWidth - 3;
     if (explanation.length <= explainWidth) {
       console.log(colors.dim(`  // ${explanation}`));
     } else {
-      const explainLines = wrapCodeLine(explanation, explainWidth);
-      explainLines.forEach((line, idx) => {
-        console.log(colors.dim(idx === 0 ? `  // ${line}` : `     ${line}`));
-      });
+      console.log(colors.dim(`  // ${explanation.slice(0, explainWidth)}…`));
     }
   }
 
-  // Show all code lines with their comments - wrapped to fit terminal
-  for (let i = 0; i < lines.length; i++) {
-    const lineNum = String(i + 1).padStart(2, " ");
-    const lineComment = lines[i].comment;
-
-    // Show comment above the code line (grayed out, indented)
-    if (lineComment) {
-      console.log(colors.dim(`  │ // ${lineComment}`));
-    }
-
-    const wrappedLines = wrapCodeLine(lines[i].code, codeWidth);
-
-    wrappedLines.forEach((wrappedLine, wIdx) => {
-      // All lines start gray; active line will be highlighted during redraw
-      if (wIdx === 0) {
-        console.log(colors.dim(`${lineNum}│ `) + colors.dim(wrappedLine));
-      } else {
-        // Continuation lines: show "  │ " prefix for visual alignment
-        console.log(colors.dim(`  │ `) + colors.dim(wrappedLine));
-      }
-    });
-  }
+  // Draw visible code lines within viewport
+  drawVisibleCodeLines(lines, viewer, 0, [], "", codeWidth);
 
   // Separator bar
   console.log(drawBar());
@@ -1891,14 +1915,107 @@ function initMultiLineCodeBlock(lines: CodeLine[], explanation?: string): void {
   // Move cursor to input line (3 up: after footer newline -> footer -> bottom bar -> input)
   process.stdout.write("\x1B[3A");
   process.stdout.write("\r" + colors.dim(" 1│ "));
+
+  // Show cursor for typing
+  cliCursor.show();
 }
 
 /**
- * Redraw multi-line code block with progress
+ * Draw visible code lines within the viewport
+ */
+function drawVisibleCodeLines(
+  lines: CodeLine[],
+  viewer: ScrollableViewer,
+  completedCount: number,
+  completedResults: string[],
+  currentInput: string,
+  codeWidth: number,
+): void {
+  const { start, end } = viewer.getVisibleRange();
+
+  // Show scroll indicator if content above
+  if (viewer.hasMoreAbove) {
+    process.stdout.write("\r\x1B[K");
+    console.log(colors.dim(`  ↑ ${viewer.linesAbove} more above`));
+  } else {
+    process.stdout.write("\r\x1B[K");
+    console.log(colors.dim("  ─────────────────"));
+  }
+
+  // Map visual line indices to code lines
+  // Build a mapping: visualIndex -> { lineIndex, isComment }
+  const visualMap: Array<{ lineIndex: number; isComment: boolean }> = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].comment) {
+      visualMap.push({ lineIndex: i, isComment: true });
+    }
+    visualMap.push({ lineIndex: i, isComment: false });
+  }
+
+  // Draw lines within viewport
+  for (
+    let visualIdx = start;
+    visualIdx < end && visualIdx < visualMap.length;
+    visualIdx++
+  ) {
+    const { lineIndex, isComment } = visualMap[visualIdx];
+    const line = lines[lineIndex];
+
+    process.stdout.write("\r\x1B[K");
+
+    if (isComment) {
+      // Draw comment line
+      console.log(colors.dim(`  │ // ${line.comment}`));
+    } else {
+      // Draw code line
+      const lineNum = String(lineIndex + 1).padStart(2, " ");
+      const code = line.code;
+
+      if (lineIndex < completedCount) {
+        // Completed line - green
+        console.log(colors.success(`${lineNum}│ `) + colors.success(code));
+      } else if (lineIndex === completedCount) {
+        // Current line - show with partial progress
+        let output = colors.primary(`${lineNum}│ `);
+        for (let j = 0; j < code.length; j++) {
+          if (j < currentInput.length && currentInput[j] === code[j]) {
+            output += colors.success(code[j]);
+          } else {
+            output += colors.tan(code[j]);
+          }
+        }
+        console.log(output);
+      } else {
+        // Future line - dim
+        console.log(colors.dim(`${lineNum}│ `) + colors.dim(code));
+      }
+    }
+  }
+
+  // Pad remaining viewport lines if content is shorter than viewport
+  const drawnLines = Math.min(end, visualMap.length) - start;
+  for (let i = drawnLines; i < viewer.viewportHeight; i++) {
+    process.stdout.write("\r\x1B[K");
+    console.log(colors.dim("  │"));
+  }
+
+  // Show scroll indicator if content below
+  if (viewer.hasMoreBelow) {
+    process.stdout.write("\r\x1B[K");
+    console.log(colors.dim(`  ↓ ${viewer.linesBelow} more below`));
+  } else {
+    process.stdout.write("\r\x1B[K");
+    console.log(colors.dim("  ─────────────────"));
+  }
+}
+
+/**
+ * Redraw multi-line code block with progress and scrollable viewport
  * @param lines - all code lines
  * @param completedCount - how many lines are completed
  * @param completedResults - the text user typed for completed lines
  * @param currentInput - current input being typed
+ * @param cursorPosition - position of cursor within currentInput (for left/right navigation)
  */
 function redrawMultiLineCodeBlock(
   lines: CodeLine[],
@@ -1906,121 +2023,149 @@ function redrawMultiLineCodeBlock(
   completedResults: string[],
   currentInput: string,
   hasExplanation: boolean = false,
+  cursorPosition?: number,
 ): void {
   if (!process.stdout.isTTY) return;
 
+  const viewer = activeScrollableViewer;
+  if (!viewer) return;
+
   const codeWidth = getCodeDisplayWidth();
 
-  // Calculate total visual lines above cursor (accounting for wrapping)
-  const wrappedTotal = getWrappedLineCount(lines, codeWidth);
-  // Lines above cursor: explanation (if any) + wrapped code lines + separator
-  const linesAbove = (hasExplanation ? 1 : 0) + wrappedTotal + 1;
+  // Hide cursor during redraw
+  cliCursor.hide();
 
-  // Move to top of code block
-  process.stdout.write(`\x1B[${linesAbove}A`);
+  // Calculate total lines in display:
+  // explanation (1) + scroll indicator top (1) + viewport lines + scroll indicator bottom (1) + separator (1) + input (1) + bottom bar (1) + mode footer (1)
+  const uiChrome = (hasExplanation ? 1 : 0) + 1 + 1 + 1 + 1 + 1 + 1;
+  const totalDisplayLines = viewer.viewportHeight + uiChrome;
 
-  // Skip over explanation line if present (we don't redraw it)
+  // Move to top of code block (from input line)
+  // Input line is at: explanation + scroll top + viewport + scroll bottom + separator
+  const linesAboveInput =
+    (hasExplanation ? 1 : 0) + 1 + viewer.viewportHeight + 1 + 1;
+  process.stdout.write(`\x1B[${linesAboveInput}A`);
+
+  // Skip over explanation line if present
   if (hasExplanation) {
     process.stdout.write("\x1B[1B");
   }
 
-  // Redraw all code lines with progress coloring (wrapped to fit terminal)
-  for (let i = 0; i < lines.length; i++) {
-    const lineNum = String(i + 1).padStart(2, " ");
-    const lineComment = lines[i].comment;
-    const originalCode = lines[i].code;
-
-    // Redraw comment line if present
-    if (lineComment) {
-      process.stdout.write("\r\x1B[K");
-      process.stdout.write(colors.dim(`  │ // ${lineComment}`));
-      process.stdout.write("\x1B[1B"); // Move down
-    }
-
-    const wrappedLines = wrapCodeLine(originalCode, codeWidth);
-
-    wrappedLines.forEach((wrappedLine, wIdx) => {
-      process.stdout.write("\r\x1B[K");
-
-      // Calculate character offset for this wrapped portion
-      const charOffset =
-        wIdx === 0 ? 0 : codeWidth + (wIdx - 1) * (codeWidth - 4);
-
-      if (i < completedCount) {
-        // Completed line - show in green
-        if (wIdx === 0) {
-          process.stdout.write(
-            colors.success(`${lineNum}│ `) + colors.success(wrappedLine),
-          );
-        } else {
-          process.stdout.write(
-            colors.success(`  │ `) + colors.success(wrappedLine),
-          );
-        }
-      } else if (i === completedCount) {
-        // Current line - show with partial progress
-        const prefix =
-          wIdx === 0 ? colors.primary(`${lineNum}│ `) : colors.primary(`  │ `);
-        let lineOutput = prefix;
-
-        // Color each character based on whether it matches
-        for (let j = 0; j < wrappedLine.length; j++) {
-          // Map wrapped position to original code position
-          let origPos: number;
-          if (wIdx === 0) {
-            origPos = j;
-          } else {
-            // For continuation lines, calculate position in original string
-            // First line: 0 to codeWidth-1
-            // Second line: codeWidth to codeWidth + (codeWidth - 4) - 1, but wrappedLine has 4-char indent
-            const continuationWidth = codeWidth - 4;
-            origPos = codeWidth + (wIdx - 1) * continuationWidth + (j - 4); // -4 for indent
-            if (j < 4) {
-              // This is the indent, not actual code
-              lineOutput += colors.tan(wrappedLine[j]);
-              continue;
-            }
-          }
-
-          if (
-            origPos < currentInput.length &&
-            currentInput[origPos] === originalCode[origPos]
-          ) {
-            lineOutput += colors.success(wrappedLine[j]);
-          } else {
-            lineOutput += colors.tan(wrappedLine[j]);
-          }
-        }
-        process.stdout.write(lineOutput);
-      } else {
-        // Future line - show in gray (dim)
-        if (wIdx === 0) {
-          process.stdout.write(
-            colors.dim(`${lineNum}│ `) + colors.dim(wrappedLine),
-          );
-        } else {
-          process.stdout.write(colors.dim(`  │ `) + colors.dim(wrappedLine));
-        }
-      }
-      process.stdout.write("\x1B[1B"); // Move down
-    });
+  // Draw scroll indicator top
+  process.stdout.write("\r\x1B[K");
+  if (viewer.hasMoreAbove) {
+    process.stdout.write(colors.dim(`  ↑ ${viewer.linesAbove} more above`));
+  } else {
+    process.stdout.write(colors.dim("  ─────────────────"));
   }
+  process.stdout.write("\x1B[1B");
+
+  // Build visual line mapping
+  const visualMap: Array<{ lineIndex: number; isComment: boolean }> = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].comment) {
+      visualMap.push({ lineIndex: i, isComment: true });
+    }
+    visualMap.push({ lineIndex: i, isComment: false });
+  }
+
+  // Draw lines within viewport
+  const { start, end } = viewer.getVisibleRange();
+  for (
+    let visualIdx = start;
+    visualIdx < end && visualIdx < visualMap.length;
+    visualIdx++
+  ) {
+    const { lineIndex, isComment } = visualMap[visualIdx];
+    const line = lines[lineIndex];
+
+    process.stdout.write("\r\x1B[K");
+
+    if (isComment) {
+      process.stdout.write(colors.dim(`  │ // ${line.comment}`));
+    } else {
+      const lineNum = String(lineIndex + 1).padStart(2, " ");
+      const code = line.code;
+
+      if (lineIndex < completedCount) {
+        // Completed line - green
+        process.stdout.write(
+          colors.success(`${lineNum}│ `) + colors.success(code),
+        );
+      } else if (lineIndex === completedCount) {
+        // Current line - show with partial progress
+        let output = colors.primary(`${lineNum}│ `);
+        for (let j = 0; j < code.length; j++) {
+          if (j < currentInput.length && currentInput[j] === code[j]) {
+            output += colors.success(code[j]);
+          } else {
+            output += colors.tan(code[j]);
+          }
+        }
+        process.stdout.write(output);
+      } else {
+        // Future line - dim
+        process.stdout.write(colors.dim(`${lineNum}│ `) + colors.dim(code));
+      }
+    }
+    process.stdout.write("\x1B[1B");
+  }
+
+  // Pad remaining viewport lines
+  const drawnLines = Math.min(end, visualMap.length) - start;
+  for (let i = drawnLines; i < viewer.viewportHeight; i++) {
+    process.stdout.write("\r\x1B[K");
+    process.stdout.write(colors.dim("  │"));
+    process.stdout.write("\x1B[1B");
+  }
+
+  // Draw scroll indicator bottom
+  process.stdout.write("\r\x1B[K");
+  if (viewer.hasMoreBelow) {
+    process.stdout.write(colors.dim(`  ↓ ${viewer.linesBelow} more below`));
+  } else {
+    process.stdout.write(colors.dim("  ─────────────────"));
+  }
+  process.stdout.write("\x1B[1B");
 
   // Redraw separator bar
   process.stdout.write("\r\x1B[K");
   process.stdout.write(drawBar());
   process.stdout.write("\x1B[1B");
 
-  // Redraw input line - wrap if too long
+  // Redraw input line with cursor position support
   process.stdout.write("\r\x1B[K");
   const currentLineNum = String(completedCount + 1).padStart(2, " ");
-  const inputWrapped = wrapCodeLine(currentInput, codeWidth);
-  // Show first line of input (or scroll to show end if very long)
-  const displayInput =
-    inputWrapped.length > 1
-      ? "…" + currentInput.slice(-(codeWidth - 1)) // Show rightmost portion
-      : currentInput;
-  process.stdout.write(colors.dim(`${currentLineNum}│ `) + displayInput);
+  const prefix = colors.dim(`${currentLineNum}│ `);
+  const prefixLen = 4; // "NN│ "
+
+  // Calculate visible portion of input if too long
+  const maxInputWidth = codeWidth;
+  let displayInput = currentInput;
+  let displayCursorPos = cursorPosition ?? currentInput.length;
+
+  if (currentInput.length > maxInputWidth) {
+    // Show portion around cursor
+    const windowStart = Math.max(
+      0,
+      displayCursorPos - Math.floor(maxInputWidth / 2),
+    );
+    const windowEnd = Math.min(
+      currentInput.length,
+      windowStart + maxInputWidth,
+    );
+    displayInput = currentInput.slice(windowStart, windowEnd);
+    displayCursorPos = displayCursorPos - windowStart;
+
+    if (windowStart > 0) {
+      displayInput = "…" + displayInput.slice(1);
+    }
+    if (windowEnd < currentInput.length) {
+      displayInput = displayInput.slice(0, -1) + "…";
+    }
+  }
+
+  process.stdout.write(prefix + displayInput);
   process.stdout.write("\x1B[1B");
 
   // Redraw bottom bar
@@ -2032,23 +2177,31 @@ function redrawMultiLineCodeBlock(
   process.stdout.write("\r\x1B[K");
   displayModeFooterInline();
 
-  // Move back to input line (2 up: footer -> bottom bar -> input)
+  // Move back to input line and position cursor
   process.stdout.write("\x1B[2A");
-  process.stdout.write("\r" + colors.dim(`${currentLineNum}│ `) + displayInput);
+  // Position cursor at correct location
+  const cursorCol = prefixLen + displayCursorPos + 1; // +1 for 1-based column
+  process.stdout.write(`\r\x1B[${cursorCol}C`);
+
+  // Show cursor
+  cliCursor.show();
 }
 
 /**
  * Clean up multi-line code block display
- * Note: We use a generous estimate to ensure all wrapped lines are cleared
+ * Clears the scrollable viewport and UI chrome
  */
 function finishMultiLineCodeBlock(
   lineCount: number,
   hasExplanation: boolean,
 ): void {
-  // Calculate total lines to clear (use generous estimate for wrapped lines)
-  // Each code line could wrap to multiple visual lines, so multiply by 3 for safety
-  // code lines * 3 (for wrapping) + separator + input + bottom bar + footer + explanation
-  const totalLines = lineCount * 3 + 4 + (hasExplanation ? 2 : 0);
+  const viewer = activeScrollableViewer;
+
+  // Calculate total lines to clear based on viewport
+  // UI chrome: explanation + scroll top + viewport + scroll bottom + separator + input + bottom bar + footer
+  const viewportHeight = viewer?.viewportHeight ?? 10;
+  const totalLines =
+    (hasExplanation ? 1 : 0) + 1 + viewportHeight + 1 + 1 + 1 + 1 + 1;
 
   // Move up to top
   process.stdout.write(`\x1B[${totalLines - 1}A`);
@@ -2063,10 +2216,18 @@ function finishMultiLineCodeBlock(
 
   // Move back to top
   process.stdout.write(`\x1B[${totalLines - 1}A`);
+
+  // Clean up module state
+  if (activeScrollableViewer) {
+    activeScrollableViewer.stopResizeListener();
+    activeScrollableViewer = null;
+  }
+  activeCursorManager = null;
 }
 
 /**
  * Handle input for a single line within the multi-line code block
+ * Supports arrow keys: Up/Down for scrolling viewport, Left/Right for cursor movement
  */
 function createMultiLineLineInput(
   rl: readline.Interface,
@@ -2082,19 +2243,51 @@ function createMultiLineLineInput(
       return;
     }
 
+    const viewer = activeScrollableViewer;
+    const cursor = activeCursorManager || new CursorManager();
+    activeCursorManager = cursor;
+
+    // Ensure current line is visible (auto-scroll)
+    if (viewer) {
+      const visualIndex = getVisualLineIndex(allLines, currentLineIndex);
+      viewer.ensureLineVisible(visualIndex);
+    }
+
     // Initial draw
     redrawMultiLineCodeBlock(
       allLines,
       currentLineIndex,
       completedResults,
-      "",
+      cursor.buffer,
       hasExplanation,
+      cursor.position,
     );
 
-    let inputBuffer = "";
     let correctCount = 0;
     let escapeBuffer = "";
     let escapeTimeout: NodeJS.Timeout | null = null;
+
+    // Handle resize events
+    const handleResize = () => {
+      if (viewer) {
+        viewer.updateViewportHeight();
+        // Ensure current line is still visible after resize
+        const visualIndex = getVisualLineIndex(allLines, currentLineIndex);
+        viewer.ensureLineVisible(visualIndex);
+      }
+      redrawMultiLineCodeBlock(
+        allLines,
+        currentLineIndex,
+        completedResults,
+        cursor.buffer,
+        hasExplanation,
+        cursor.position,
+      );
+    };
+
+    if (viewer) {
+      viewer.startResizeListener(handleResize);
+    }
 
     process.stdin.setRawMode(true);
     process.stdin.resume();
@@ -2104,14 +2297,78 @@ function createMultiLineLineInput(
       process.stdin.setRawMode(false);
       process.stdin.removeListener("data", handleKeypress);
       if (escapeTimeout) clearTimeout(escapeTimeout);
+      if (viewer) {
+        viewer.stopResizeListener();
+      }
     };
 
     const processKey = (key: string) => {
       // Ctrl+C - exit
       if (key === "\x03") {
         cleanup();
+        cliCursor.show();
         console.log("\n");
         process.exit(0);
+      }
+
+      // Up arrow - scroll up
+      if (key === "\x1b[A" || key === "\x1bOA") {
+        if (viewer && viewer.scrollUp()) {
+          redrawMultiLineCodeBlock(
+            allLines,
+            currentLineIndex,
+            completedResults,
+            cursor.buffer,
+            hasExplanation,
+            cursor.position,
+          );
+        }
+        return;
+      }
+
+      // Down arrow - scroll down
+      if (key === "\x1b[B" || key === "\x1bOB") {
+        if (viewer && viewer.scrollDown()) {
+          redrawMultiLineCodeBlock(
+            allLines,
+            currentLineIndex,
+            completedResults,
+            cursor.buffer,
+            hasExplanation,
+            cursor.position,
+          );
+        }
+        return;
+      }
+
+      // Left arrow - move cursor left
+      if (key === "\x1b[D" || key === "\x1bOD") {
+        if (cursor.moveLeft()) {
+          redrawMultiLineCodeBlock(
+            allLines,
+            currentLineIndex,
+            completedResults,
+            cursor.buffer,
+            hasExplanation,
+            cursor.position,
+          );
+        }
+        return;
+      }
+
+      // Right arrow - move cursor right
+      if (key === "\x1b[C" || key === "\x1bOC") {
+        if (cursor.moveRight()) {
+          redrawMultiLineCodeBlock(
+            allLines,
+            currentLineIndex,
+            completedResults,
+            cursor.buffer,
+            hasExplanation,
+            cursor.position,
+          );
+        }
+        return;
       }
 
       // Shift+Tab - cycle mode
@@ -2121,14 +2378,16 @@ function createMultiLineLineInput(
           allLines,
           currentLineIndex,
           completedResults,
-          inputBuffer,
+          cursor.buffer,
           hasExplanation,
+          cursor.position,
         );
         return;
       }
 
       // Enter - submit input (only if correct in tutor mode, or if it's a question)
       if (key === "\r" || key === "\n") {
+        const inputBuffer = cursor.buffer;
         // In tutor mode, require exact match before allowing Enter (unless it's a question)
         if (isTutorMode()) {
           // Check if input matches expected text exactly
@@ -2137,6 +2396,7 @@ function createMultiLineLineInput(
             if (isNaturalLanguageQuestion(inputBuffer, expectedText)) {
               // Allow questions through even if they don't match the code
               cleanup();
+              cursor.reset();
               resolve(inputBuffer);
               return;
             }
@@ -2145,33 +2405,46 @@ function createMultiLineLineInput(
               allLines,
               currentLineIndex,
               completedResults,
-              inputBuffer,
+              cursor.buffer,
               hasExplanation,
+              cursor.position,
             );
             return;
           }
         }
         // In block mode or when input is correct, allow submission
         cleanup();
-        resolve(inputBuffer);
+        const result = cursor.buffer;
+        cursor.reset();
+        resolve(result);
         return;
       }
 
-      // Backspace
+      // Backspace - delete character before cursor
       if (key === "\x7f" || key === "\b") {
-        if (inputBuffer.length > 0) {
-          if (correctCount > 0 && correctCount === inputBuffer.length) {
-            correctCount--;
+        if (cursor.deleteBack()) {
+          // Recalculate correct count
+          const inputBuffer = cursor.buffer;
+          correctCount = 0;
+          for (
+            let i = 0;
+            i < inputBuffer.length && i < expectedText.length;
+            i++
+          ) {
+            if (inputBuffer[i] === expectedText[i]) {
+              correctCount++;
+            } else {
+              break;
+            }
           }
-          inputBuffer = inputBuffer.slice(0, -1);
         }
-        // Always redraw to maintain display integrity (even when buffer is empty)
         redrawMultiLineCodeBlock(
           allLines,
           currentLineIndex,
           completedResults,
-          inputBuffer,
+          cursor.buffer,
           hasExplanation,
+          cursor.position,
         );
         return;
       }
@@ -2181,34 +2454,41 @@ function createMultiLineLineInput(
 
       // Tab inserts indent (2 spaces)
       if (key === "\t") {
-        inputBuffer += "  ";
+        cursor.insert("  ");
         if (isBlockMode()) {
-          correctCount = inputBuffer.length;
+          correctCount = cursor.length;
         }
         redrawMultiLineCodeBlock(
           allLines,
           currentLineIndex,
           completedResults,
-          inputBuffer,
+          cursor.buffer,
           hasExplanation,
+          cursor.position,
         );
         return;
       }
 
-      // Regular character
+      // Regular character - insert at cursor position
       if (key.length === 1 && key >= " ") {
-        inputBuffer += key;
+        cursor.insert(key);
+        const inputBuffer = cursor.buffer;
 
         if (isBlockMode()) {
           correctCount = inputBuffer.length;
         } else {
-          const newCharPos = inputBuffer.length - 1;
-          if (
-            newCharPos === correctCount &&
-            correctCount < expectedText.length &&
-            key === expectedText[correctCount]
+          // Recalculate correct count from start (since we can insert anywhere)
+          correctCount = 0;
+          for (
+            let i = 0;
+            i < inputBuffer.length && i < expectedText.length;
+            i++
           ) {
-            correctCount++;
+            if (inputBuffer[i] === expectedText[i]) {
+              correctCount++;
+            } else {
+              break;
+            }
           }
         }
 
@@ -2216,8 +2496,9 @@ function createMultiLineLineInput(
           allLines,
           currentLineIndex,
           completedResults,
-          inputBuffer,
+          cursor.buffer,
           hasExplanation,
+          cursor.position,
         );
       }
     };
