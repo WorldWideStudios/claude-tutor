@@ -1,0 +1,149 @@
+{
+  "id": "d04a8ae3-e520-4a8c-9801-1a7c98b27452",
+  "projectName": "lets test out a voting system",
+  "projectGoal": "lets test out a voting system",
+  "workingDirectory": "/Users/dylanholland/.claude-tutor/projects/lets-test-out-a-voting-system-mlidl48e",
+  "segments": [
+    {
+      "id": "6ec81a0e-b219-476c-a3a0-3442fd6c877c",
+      "type": "build",
+      "title": "Create Basic Vote Counter",
+      "goldenCode": "mkdir -p src\ncat > src/vote-counter.ts << 'EOF'\ntype Vote = {\n  id: string;\n  userId: string;\n  postId: string;\n  value: number;\n};\n\nclass VoteCounter {\n  private votes: Vote[] = [];\n\n  addVote(userId: string, postId: string, value: number): void {\n    const vote: Vote = {\n      id: Math.random().toString(36),\n      userId,\n      postId, \n      value\n    };\n    this.votes.push(vote);\n    console.log(`Vote added: ${value} for post ${postId}`);\n  }\n\n  getTotalVotes(postId: string): number {\n    return this.votes\n      .filter(vote => vote.postId === postId)\n      .reduce((sum, vote) => sum + vote.value, 0);\n  }\n}\n\nconst counter = new VoteCounter();\ncounter.addVote('user1', 'post1', 1);\ncounter.addVote('user2', 'post1', -1);\nconsole.log('Total votes:', counter.getTotalVotes('post1'));\nEOF",
+      "targetFile": "src/vote-counter.ts",
+      "explanation": "We're creating a simple voting system that can store votes and calculate totals for posts.",
+      "engineeringFocus": "Data modeling and basic CRUD operations",
+      "checkpoints": [
+        {
+          "id": "c917b188-add1-49df-9eac-7978445c6779",
+          "description": "Create Vote type",
+          "completed": false
+        },
+        {
+          "id": "29ba7bfc-48c3-42ac-a960-69d49eafeb45",
+          "description": "Implement VoteCounter class",
+          "completed": false
+        },
+        {
+          "id": "5e831ab0-5b61-4359-ade7-658955f178c6",
+          "description": "Test adding votes and getting totals",
+          "completed": false
+        }
+      ]
+    },
+    {
+      "id": "5738dc32-c794-4942-81d0-3b3bdc75f643",
+      "type": "build",
+      "title": "Add Vote Validation Rules",
+      "goldenCode": "cat > src/vote-validator.ts << 'EOF'\ntype ValidationResult = {\n  isValid: boolean;\n  error?: string;\n};\n\nclass VoteValidator {\n  private userVotes: Map<string, Map<string, number>> = new Map();\n\n  validateVote(userId: string, postId: string, value: number): ValidationResult {\n    if (value !== 1 && value !== -1) {\n      return { isValid: false, error: 'Vote must be 1 or -1' };\n    }\n\n    if (!userId || !postId) {\n      return { isValid: false, error: 'User ID and Post ID are required' };\n    }\n\n    const userPosts = this.userVotes.get(userId) || new Map();\n    if (userPosts.has(postId)) {\n      return { isValid: false, error: 'User already voted on this post' };\n    }\n\n    return { isValid: true };\n  }\n\n  recordVote(userId: string, postId: string, value: number): void {\n    if (!this.userVotes.has(userId)) {\n      this.userVotes.set(userId, new Map());\n    }\n    this.userVotes.get(userId)!.set(postId, value);\n  }\n}\n\nconst validator = new VoteValidator();\nconst result = validator.validateVote('user1', 'post1', 1);\nconsole.log('Validation result:', result);\nEOF",
+      "targetFile": "src/vote-validator.ts",
+      "explanation": "We're adding validation to prevent duplicate votes and ensure vote values are correct.",
+      "engineeringFocus": "Input validation and business logic enforcement",
+      "checkpoints": [
+        {
+          "id": "50361eba-19f5-48d6-a806-d5f45cef2840",
+          "description": "Create validation rules",
+          "completed": false
+        },
+        {
+          "id": "4b55349f-e996-4beb-9b51-e3c3ff955791",
+          "description": "Track user voting history",
+          "completed": false
+        },
+        {
+          "id": "e53c1246-7d45-4c82-9c02-7df858c5eb2f",
+          "description": "Test duplicate vote prevention",
+          "completed": false
+        }
+      ]
+    },
+    {
+      "id": "d17dc2b2-7cec-41af-9071-08a3590e5c1d",
+      "type": "build",
+      "title": "Build Vote Storage System",
+      "goldenCode": "cat > src/vote-storage.ts << 'EOF'\ninterface VoteRecord {\n  id: string;\n  userId: string;\n  postId: string;\n  value: number;\n  timestamp: Date;\n}\n\nclass VoteStorage {\n  private votes: VoteRecord[] = [];\n  private postScores: Map<string, number> = new Map();\n\n  saveVote(userId: string, postId: string, value: number): string {\n    const voteId = `vote_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;\n    \n    const vote: VoteRecord = {\n      id: voteId,\n      userId,\n      postId,\n      value,\n      timestamp: new Date()\n    };\n\n    this.votes.push(vote);\n    \n    const currentScore = this.postScores.get(postId) || 0;\n    this.postScores.set(postId, currentScore + value);\n    \n    console.log(`Vote saved with ID: ${voteId}`);\n    return voteId;\n  }\n\n  getPostScore(postId: string): number {\n    return this.postScores.get(postId) || 0;\n  }\n\n  getUserVotes(userId: string): VoteRecord[] {\n    return this.votes.filter(vote => vote.userId === userId);\n  }\n}\n\nconst storage = new VoteStorage();\nstorage.saveVote('user1', 'post1', 1);\nconsole.log('Post score:', storage.getPostScore('post1'));\nEOF",
+      "targetFile": "src/vote-storage.ts",
+      "explanation": "We're creating a storage system that persists votes and efficiently tracks post scores.",
+      "engineeringFocus": "Data persistence and performance optimization with caching",
+      "checkpoints": [
+        {
+          "id": "39862a52-990c-4fd6-baf2-5438ff9270ef",
+          "description": "Implement vote storage",
+          "completed": false
+        },
+        {
+          "id": "507a3874-a4ba-406a-b0c8-681e3b19d15c",
+          "description": "Add score caching",
+          "completed": false
+        },
+        {
+          "id": "a1672c60-15a6-4bad-b9d1-e7af42435ec2",
+          "description": "Test vote retrieval by user",
+          "completed": false
+        }
+      ]
+    },
+    {
+      "id": "fbe6c8e4-cb94-4c44-8a1a-90d19f95a719",
+      "type": "refactor",
+      "title": "Improve Vote System Architecture",
+      "startingCode": "// Multiple separate classes with no coordination\nclass VoteCounter { /* ... */ }\nclass VoteValidator { /* ... */ }\nclass VoteStorage { /* ... */ }",
+      "goldenCode": "cat > src/voting-system.ts << 'EOF'\ninterface Vote {\n  id: string;\n  userId: string; \n  postId: string;\n  value: number;\n  timestamp: Date;\n}\n\nclass VotingSystem {\n  private votes: Vote[] = [];\n  private userVotes: Map<string, Set<string>> = new Map();\n\n  castVote(userId: string, postId: string, value: number): { success: boolean; message: string } {\n    if (value !== 1 && value !== -1) {\n      return { success: false, message: 'Vote must be 1 or -1' };\n    }\n\n    const userPosts = this.userVotes.get(userId) || new Set();\n    if (userPosts.has(postId)) {\n      return { success: false, message: 'Already voted on this post' };\n    }\n\n    const vote: Vote = {\n      id: `vote_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,\n      userId,\n      postId,\n      value,\n      timestamp: new Date()\n    };\n\n    this.votes.push(vote);\n    userPosts.add(postId);\n    this.userVotes.set(userId, userPosts);\n\n    return { success: true, message: 'Vote recorded' };\n  }\n\n  getPostScore(postId: string): number {\n    return this.votes\n      .filter(vote => vote.postId === postId)\n      .reduce((sum, vote) => sum + vote.value, 0);\n  }\n}\n\nconst votingSystem = new VotingSystem();\nconsole.log(votingSystem.castVote('user1', 'post1', 1));\nconsole.log('Score:', votingSystem.getPostScore('post1'));\nEOF",
+      "targetFile": "src/voting-system.ts",
+      "problem": "Having separate classes makes the voting system fragmented and harder to use",
+      "lesson": "Combining related functionality into a cohesive API improves usability and maintainability",
+      "checkpoints": [
+        {
+          "id": "5e2f9521-026b-431b-b298-8f112c98c8bf",
+          "description": "Merge classes into single system",
+          "completed": false
+        },
+        {
+          "id": "db46d9eb-52c1-4752-9a2b-38bdd4613219",
+          "description": "Create unified vote casting method",
+          "completed": false
+        },
+        {
+          "id": "e3da44ca-e096-4d79-a3e6-f76dc020fdc4",
+          "description": "Test complete workflow",
+          "completed": false
+        }
+      ]
+    },
+    {
+      "id": "39891067-071d-4093-b4b8-5216b036800d",
+      "type": "build",
+      "title": "Add Vote History and Analytics",
+      "goldenCode": "cat > src/vote-analytics.ts << 'EOF'\ninterface VoteStats {\n  totalVotes: number;\n  upvotes: number;\n  downvotes: number;\n  score: number;\n  voterCount: number;\n}\n\nclass VoteAnalytics {\n  private votes: Array<{ userId: string; postId: string; value: number; timestamp: Date }> = [];\n\n  recordVote(userId: string, postId: string, value: number): void {\n    this.votes.push({\n      userId,\n      postId, \n      value,\n      timestamp: new Date()\n    });\n  }\n\n  getPostStats(postId: string): VoteStats {\n    const postVotes = this.votes.filter(vote => vote.postId === postId);\n    const upvotes = postVotes.filter(vote => vote.value === 1).length;\n    const downvotes = postVotes.filter(vote => vote.value === -1).length;\n    const uniqueVoters = new Set(postVotes.map(vote => vote.userId)).size;\n    \n    return {\n      totalVotes: postVotes.length,\n      upvotes,\n      downvotes,\n      score: upvotes - downvotes,\n      voterCount: uniqueVoters\n    };\n  }\n\n  getTopPosts(limit: number = 5): Array<{ postId: string; score: number }> {\n    const postScores = new Map<string, number>();\n    \n    this.votes.forEach(vote => {\n      const currentScore = postScores.get(vote.postId) || 0;\n      postScores.set(vote.postId, currentScore + vote.value);\n    });\n    \n    return Array.from(postScores.entries())\n      .map(([postId, score]) => ({ postId, score }))\n      .sort((a, b) => b.score - a.score)\n      .slice(0, limit);\n  }\n}\n\nconst analytics = new VoteAnalytics();\nanalyticsrecordVote('user1', 'post1', 1);\nanalytics.recordVote('user2', 'post1', 1);\nconsole.log('Post stats:', analytics.getPostStats('post1'));\nEOF",
+      "targetFile": "src/vote-analytics.ts",
+      "explanation": "We're adding analytics to track voting patterns and identify popular posts.",
+      "engineeringFocus": "Data aggregation and reporting functionality",
+      "checkpoints": [
+        {
+          "id": "dbe1d9e6-95f2-4e6c-a099-36c67c84c60b",
+          "description": "Implement vote statistics",
+          "completed": false
+        },
+        {
+          "id": "44919d95-9eaf-45dc-84bd-422b51f9f9c7",
+          "description": "Create post ranking system",
+          "completed": false
+        },
+        {
+          "id": "4070c952-203a-40fc-8e8b-86ba66a46ebb",
+          "description": "Test analytics with sample data",
+          "completed": false
+        }
+      ]
+    }
+  ],
+  "learnerProfile": {
+    "projectIdea": "Building a Reddit-like webapp with a focus on implementing a classic upvote/downvote voting system",
+    "experienceLevel": "Beginner - pretty new to coding and web development fundamentals",
+    "projectType": "Web application",
+    "projectGoals": "Learn database interactions through building a voting system, specifically how to store and update vote counts and manage user-vote relationships",
+    "technicalContext": "Starting with basic web development concepts, needs to learn database fundamentals and backend data management",
+    "constraints": "Beginner-level experience requires curriculum to start with foundational concepts before diving into complex implementations",
+    "profileSummary": "A beginner developer building their first substantial web project who wants to focus on learning backend database concepts through implementing a Reddit-style voting system. They're ready to move beyond basic HTML/CSS/JS into more complex data management and server-side programming."
+  },
+  "createdAt": "2026-02-11T18:41:24.587Z"
+}

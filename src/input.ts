@@ -2166,12 +2166,12 @@ function redrawMultiLineCodeBlock(
   }
 
   process.stdout.write(prefix + displayInput);
-  process.stdout.write("\x1B[1B");
+  process.stdout.write("\n");
 
   // Redraw bottom bar
   process.stdout.write("\r\x1B[K");
   process.stdout.write(drawBar());
-  process.stdout.write("\x1B[1B");
+  process.stdout.write("\n");
 
   // Redraw mode footer
   process.stdout.write("\r\x1B[K");

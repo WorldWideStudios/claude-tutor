@@ -1,27 +1,28 @@
-import chalk from 'chalk';
-import type { Curriculum, TutorState, Segment, TutorMode } from './types.js';
-import { TUTOR_MODES } from './types.js';
-import { getMode, getModeInfo } from './mode.js';
+import chalk from "chalk";
+import type { Curriculum, TutorState, Segment, TutorMode } from "./types.js";
+import { TUTOR_MODES } from "./types.js";
+import { getMode, getModeInfo } from "./mode.js";
 
 /**
  * CLI Display Module - Enhanced UX
  */
 
 // Check if colors should be disabled
-const noColor = process.env.NO_COLOR !== undefined ||
-                process.env.TERM === 'dumb' ||
-                !process.stdout.isTTY;
+const noColor =
+  process.env.NO_COLOR !== undefined ||
+  process.env.TERM === "dumb" ||
+  !process.stdout.isTTY;
 
 // Color palette
 export const colors = {
-  primary: noColor ? chalk.reset : chalk.hex('#10B981'),
-  primaryDim: noColor ? chalk.reset : chalk.hex('#059669'),
+  primary: noColor ? chalk.reset : chalk.hex("#10B981"),
+  primaryDim: noColor ? chalk.reset : chalk.hex("#059669"),
   success: noColor ? chalk.reset : chalk.green,
   error: noColor ? chalk.reset : chalk.red,
   warning: noColor ? chalk.reset : chalk.yellow,
-  orange: noColor ? chalk.reset : chalk.hex('#F59E0B'),
-  tan: noColor ? chalk.reset : chalk.hex('#D4A574'),  // Light tan for Typer Shark untyped
-  purple: noColor ? chalk.reset : chalk.hex('#A855F7'),  // Purple for discuss mode
+  orange: noColor ? chalk.reset : chalk.hex("#F59E0B"),
+  tan: noColor ? chalk.reset : chalk.hex("#D4A574"), // Light tan for Typer Shark untyped
+  purple: noColor ? chalk.reset : chalk.hex("#A855F7"), // Purple for discuss mode
   text: noColor ? chalk.reset : chalk.white,
   dim: noColor ? chalk.reset : chalk.gray,
   muted: noColor ? chalk.reset : chalk.dim,
@@ -29,15 +30,15 @@ export const colors = {
 
 // Symbols
 export const symbols = {
-  success: '✓',
-  error: '✗',
-  arrow: '›',
-  bullet: '○',
-  branch: '├─',
-  branchEnd: '└─',
-  branchContinue: '⎿',
-  vertical: '│',
-  spinner: ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'],
+  success: "✓",
+  error: "✗",
+  arrow: "›",
+  bullet: "○",
+  branch: "├─",
+  branchEnd: "└─",
+  branchContinue: "⎿",
+  vertical: "│",
+  spinner: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
 };
 
 // Loading state
@@ -51,9 +52,21 @@ let currentStatus: string | null = null;
 
 // Fun loading words - only advance when something actually happens
 const funWords = [
-  'Wizarding', 'Booping', 'Noodling', 'Vibing', 'Schlepping',
-  'Clauding', 'Scaffolding', 'Stacking', 'Coalescing', 'Brewing',
-  'Conjuring', 'Pondering', 'Manifesting', 'Assembling', 'Crafting'
+  "Wizarding",
+  "Booping",
+  "Noodling",
+  "Vibing",
+  "Schlepping",
+  "Clauding",
+  "Scaffolding",
+  "Stacking",
+  "Coalescing",
+  "Brewing",
+  "Conjuring",
+  "Pondering",
+  "Manifesting",
+  "Assembling",
+  "Crafting",
 ];
 
 // Character tracking state
@@ -65,7 +78,7 @@ let typedProgress = 0;
  */
 export function clearScreen(): void {
   if (process.stdout.isTTY) {
-    process.stdout.write('\x1Bc');
+    process.stdout.write("\x1Bc");
   }
 }
 
@@ -88,7 +101,7 @@ function getCodeDisplayWidth(prefixLen: number = 2): number {
  */
 function truncateForDisplay(text: string, maxWidth: number): string {
   if (text.length <= maxWidth) return text;
-  return text.slice(0, maxWidth - 1) + '…';
+  return text.slice(0, maxWidth - 1) + "…";
 }
 
 /**
@@ -97,22 +110,22 @@ function truncateForDisplay(text: string, maxWidth: number): string {
  */
 function getVisibleInput(input: string, maxWidth: number): string {
   if (input.length <= maxWidth) return input;
-  return '…' + input.slice(-(maxWidth - 1));
+  return "…" + input.slice(-(maxWidth - 1));
 }
 
 /**
  * Draw a horizontal bar
  */
 export function drawBar(): string {
-  return colors.muted('─'.repeat(getWidth()));
+  return colors.muted("─".repeat(getWidth()));
 }
 
 // Turtle ASCII art logo (3 lines using half-blocks for proper proportions)
 // ▀ = top half, ▄ = bottom half, █ = full block
 const TURTLE_LOGO = [
-  '     ▄▄▄▄▄  ██▀▄',
-  ' ▄ ▄▀█▀█▀█▀▄▀▀▀▀',
-  '  ▀▀██▀▀██▀▀    ',
+  "     ▄▄▄▄▄  ██▀▄",
+  " ▄ ▄▀█▀█▀█▀▄▀▀▀▀",
+  "  ▀▀██▀▀██▀▀    ",
 ];
 
 /**
@@ -123,23 +136,29 @@ export function displayWelcome(currentSkill?: string): void {
   clearScreen();
   console.log();
 
-  const title = 'Claude Tutor';
-  const version = 'v0.1.1';
-  const tagline = 'Learn to code like an engineer';
-  const skillLine = currentSkill ? `Learning: ${currentSkill}` : '';
+  const title = "Claude Tutor";
+  const version = "v0.1.1";
+  const tagline = "Learn to code like an engineer";
+  const skillLine = currentSkill ? `Learning: ${currentSkill}` : "";
 
   TURTLE_LOGO.forEach((logoLine, i) => {
-    const coloredLogo = colors.primary(logoLine);  // Use project green
+    const coloredLogo = colors.primary(logoLine); // Use project green
 
     if (i === 0) {
       // Title line - bold white + version in gray
-      console.log(coloredLogo + '   ' + chalk.bold.white(title) + ' ' + colors.dim(version));
+      console.log(
+        coloredLogo +
+          "   " +
+          chalk.bold.white(title) +
+          " " +
+          colors.dim(version),
+      );
     } else if (i === 1) {
       // Tagline - dim
-      console.log(coloredLogo + '   ' + colors.dim(tagline));
+      console.log(coloredLogo + "   " + colors.dim(tagline));
     } else {
       // Skill line - dim
-      console.log(coloredLogo + '   ' + colors.dim(skillLine));
+      console.log(coloredLogo + "   " + colors.dim(skillLine));
     }
   });
 
@@ -169,13 +188,13 @@ export function startLoading(): void {
 
   // Draw the entry field structure: top bar, spinner line, bottom bar, blank line
   console.log(drawBar()); // Top gray bar
-  process.stdout.write(`  ${colors.dim(funWords[wordIndex] + '...')}`); // Initial spinner line (indented)
+  process.stdout.write(`  ${colors.dim(funWords[wordIndex] + "...")}`); // Initial spinner line (indented)
   console.log(); // End spinner line
   console.log(drawBar()); // Bottom gray bar
   console.log(); // Blank line below for spacing
 
   // Move cursor back up to spinner line (4 lines up: blank, bottom bar, spinner, top bar -> land on spinner)
-  process.stdout.write('\x1B[3A'); // Move up 3 lines to spinner line
+  process.stdout.write("\x1B[3A"); // Move up 3 lines to spinner line
 
   // Smooth spinner animation
   spinnerInterval = setInterval(() => {
@@ -188,7 +207,9 @@ export function startLoading(): void {
     // Use currentStatus if set, otherwise show current fun word
     const displayText = currentStatus || funWords[wordIndex % funWords.length];
 
-    process.stdout.write(`\r\x1B[K${colors.primaryDim(frame)} ${colors.dim(displayText + '...')}`);
+    process.stdout.write(
+      `\r\x1B[K${colors.primaryDim(frame)} ${colors.dim(displayText + "...")}`,
+    );
 
     spinnerIndex++;
   }, 100);
@@ -236,12 +257,12 @@ export function stopLoading(): void {
   }
   if (process.stdout.isTTY) {
     // Cursor is on spinner line - move up to top bar and clear all 4 lines
-    process.stdout.write('\x1B[1A'); // Move up to top bar
-    process.stdout.write('\r\x1B[K'); // Clear top bar
-    process.stdout.write('\x1B[1B\r\x1B[K'); // Move down, clear spinner line
-    process.stdout.write('\x1B[1B\r\x1B[K'); // Move down, clear bottom bar
-    process.stdout.write('\x1B[1B\r\x1B[K'); // Move down, clear blank line
-    process.stdout.write('\x1B[4A'); // Move back up 4 lines to where top bar was
+    process.stdout.write("\x1B[1A"); // Move up to top bar
+    process.stdout.write("\r\x1B[K"); // Clear top bar
+    process.stdout.write("\x1B[1B\r\x1B[K"); // Move down, clear spinner line
+    process.stdout.write("\x1B[1B\r\x1B[K"); // Move down, clear bottom bar
+    process.stdout.write("\x1B[1B\r\x1B[K"); // Move down, clear blank line
+    process.stdout.write("\x1B[4A"); // Move back up 4 lines to where top bar was
   }
 }
 
@@ -257,21 +278,26 @@ export function updateLoadingStatus(status: string): void {
 /**
  * Display a tool status line (used when a tool starts/ends)
  */
-export function displayToolStatus(toolName: string, status: 'start' | 'end'): void {
+export function displayToolStatus(
+  toolName: string,
+  status: "start" | "end",
+): void {
   if (!process.stdout.isTTY) {
-    if (status === 'start') {
+    if (status === "start") {
       console.log(colors.dim(`  ${symbols.arrow} ${toolName}...`));
     }
     return;
   }
 
-  if (status === 'start') {
+  if (status === "start") {
     // Update the loading spinner to show the tool name
     currentStatus = toolName;
   } else {
     // Tool finished - show checkmark briefly then clear
-    process.stdout.write('\r\x1B[K');
-    process.stdout.write(`${colors.success(symbols.success)} ${colors.dim(toolName)}\n`);
+    process.stdout.write("\r\x1B[K");
+    process.stdout.write(
+      `${colors.success(symbols.success)} ${colors.dim(toolName)}\n`,
+    );
     currentStatus = null;
   }
 }
@@ -311,7 +337,7 @@ export function displayStatus(message: string): void {
 export function displayStep(step: string): void {
   // Clear the current line (in case spinner is showing)
   if (process.stdout.isTTY) {
-    process.stdout.write('\r\x1B[K');
+    process.stdout.write("\r\x1B[K");
   }
   console.log(colors.dim(`  ${symbols.bullet} ${step}`));
 }
@@ -329,7 +355,9 @@ export function startPlanningWithSteps(steps: string[]): void {
 
   if (!process.stdout.isTTY) {
     // Non-TTY: just print all steps
-    steps.forEach(step => console.log(colors.dim(`  ${symbols.bullet} ${step}`)));
+    steps.forEach((step) =>
+      console.log(colors.dim(`  ${symbols.bullet} ${step}`)),
+    );
     return;
   }
 
@@ -340,7 +368,9 @@ export function startPlanningWithSteps(steps: string[]): void {
   planningInterval = setInterval(() => {
     currentStepIndex++;
     if (currentStepIndex < planningSteps.length) {
-      console.log(colors.dim(`  ${symbols.bullet} ${planningSteps[currentStepIndex]}`));
+      console.log(
+        colors.dim(`  ${symbols.bullet} ${planningSteps[currentStepIndex]}`),
+      );
     } else {
       // Done with steps
       if (planningInterval) {
@@ -362,7 +392,9 @@ export function stopPlanningSteps(): void {
  * Display executed command with result
  */
 export function displayCommand(command: string, success: boolean): void {
-  const icon = success ? colors.success(symbols.success) : colors.error(symbols.error);
+  const icon = success
+    ? colors.success(symbols.success)
+    : colors.error(symbols.error);
   console.log(`${icon} ${colors.dim(command)}`);
 }
 
@@ -371,8 +403,8 @@ export function displayCommand(command: string, success: boolean): void {
  */
 export function displayCommandOutput(output: string): void {
   if (output && output.trim()) {
-    const lines = output.trim().split('\n');
-    lines.forEach(line => {
+    const lines = output.trim().split("\n");
+    lines.forEach((line) => {
       console.log(colors.muted(`  ${line}`));
     });
   }
@@ -384,18 +416,21 @@ export function displayCommandOutput(output: string): void {
 export function displaySegmentHeader(
   curriculum: Curriculum,
   segment: Segment,
-  segmentIndex: number
+  segmentIndex: number,
 ): void {
   const current = segmentIndex + 1;
   const total = curriculum.segments.length;
 
   console.log();
-  console.log(colors.dim(`[${current}/${total}]`) + ' ' + colors.text(segment.title));
+  console.log(
+    colors.dim(`[${current}/${total}]`) + " " + colors.text(segment.title),
+  );
 
   // Visual progress bar
   const filled = Math.round((current / total) * 20);
   const empty = 20 - filled;
-  const bar = colors.primary('━'.repeat(filled)) + colors.muted('─'.repeat(empty));
+  const bar =
+    colors.primary("━".repeat(filled)) + colors.muted("─".repeat(empty));
   console.log(bar);
   console.log();
 }
@@ -405,8 +440,12 @@ export function displaySegmentHeader(
  */
 export function displayResume(curriculum: Curriculum, state: TutorState): void {
   console.log();
-  console.log(colors.text('Welcome back'));
-  console.log(colors.dim(`${curriculum.projectName} • ${state.currentSegmentIndex}/${curriculum.segments.length} complete`));
+  console.log(colors.text("Welcome back"));
+  console.log(
+    colors.dim(
+      `${curriculum.projectName} • ${state.currentSegmentIndex}/${curriculum.segments.length} complete`,
+    ),
+  );
   console.log();
 }
 
@@ -420,7 +459,7 @@ let isFirstChunk = true;
  */
 function stripHtmlTags(text: string): string {
   // Remove HTML tags like <think>, </think>, <response>, etc.
-  return text.replace(/<[^>]*>/g, '');
+  return text.replace(/<[^>]*>/g, "");
 }
 
 /**
@@ -432,7 +471,7 @@ export function displayTutorText(text: string): void {
   if (!cleanText) return; // Skip if only HTML tags
 
   if (isFirstChunk) {
-    process.stdout.write(colors.dim(symbols.bullet + ' '));
+    process.stdout.write(colors.dim(symbols.bullet + " "));
     isFirstChunk = false;
   }
   process.stdout.write(cleanText);
@@ -466,7 +505,10 @@ export function displayExplanation(lines: string[]): void {
 /**
  * Display a code block with explanation
  */
-export function displayCodeWithExplanation(code: string, explanations: string[]): void {
+export function displayCodeWithExplanation(
+  code: string,
+  explanations: string[],
+): void {
   console.log();
   console.log(colors.text(code));
   if (explanations.length > 0) {
@@ -480,12 +522,12 @@ export function displayCodeWithExplanation(code: string, explanations: string[])
  * Each line of code is shown in green with its explanation in gray below
  */
 export function displayCodeBlockWithLineExplanations(
-  lines: Array<{ code: string; explanation: string }>
+  lines: Array<{ code: string; explanation: string }>,
 ): void {
   console.log();
   lines.forEach((line, index) => {
     // Code line in green
-    console.log('  ' + colors.primary(line.code));
+    console.log("  " + colors.primary(line.code));
     // Explanation in gray with branch symbol
     const isLast = index === lines.length - 1;
     const branchSymbol = isLast ? symbols.branchEnd : symbols.branchContinue;
@@ -502,26 +544,28 @@ export function displayHeredocWithExplanations(
   header: string,
   codeLines: string[],
   footer: string,
-  blockExplanations: Array<{ section: string; explanation: string }>
+  blockExplanations: Array<{ section: string; explanation: string }>,
 ): void {
   console.log();
   // Header (e.g., cat > src/index.ts << 'EOF') in green
-  console.log('  ' + colors.primary(header));
+  console.log("  " + colors.primary(header));
 
   // Code content in green
-  codeLines.forEach(line => {
-    console.log('  ' + colors.primary(line));
+  codeLines.forEach((line) => {
+    console.log("  " + colors.primary(line));
   });
 
   // Footer (EOF) in green
-  console.log('  ' + colors.primary(footer));
+  console.log("  " + colors.primary(footer));
 
   // Block explanations in gray
   console.log();
   blockExplanations.forEach((block, index) => {
     const isLast = index === blockExplanations.length - 1;
     const branchSymbol = isLast ? symbols.branchEnd : symbols.branchContinue;
-    console.log(colors.dim(`  ${branchSymbol}  ${block.section}: ${block.explanation}`));
+    console.log(
+      colors.dim(`  ${branchSymbol}  ${block.section}: ${block.explanation}`),
+    );
   });
   console.log();
 }
@@ -529,13 +573,18 @@ export function displayHeredocWithExplanations(
 /**
  * Display segment completion
  */
-export function displaySegmentComplete(summary: string, nextSegmentTitle?: string): void {
+export function displaySegmentComplete(
+  summary: string,
+  nextSegmentTitle?: string,
+): void {
   console.log();
-  console.log(colors.success(symbols.success) + ' ' + colors.text('Segment complete'));
+  console.log(
+    colors.success(symbols.success) + " " + colors.text("Segment complete"),
+  );
   console.log(colors.dim(summary));
   if (nextSegmentTitle) {
     console.log();
-    console.log(colors.dim('Next: ' + nextSegmentTitle));
+    console.log(colors.dim("Next: " + nextSegmentTitle));
   }
 }
 
@@ -544,11 +593,15 @@ export function displaySegmentComplete(summary: string, nextSegmentTitle?: strin
  */
 export function displayCurriculumComplete(curriculum: Curriculum): void {
   console.log();
-  console.log(colors.success(symbols.success) + ' ' + colors.text('Course complete'));
+  console.log(
+    colors.success(symbols.success) + " " + colors.text("Course complete"),
+  );
   console.log(colors.dim(`Finished: ${curriculum.projectName}`));
   console.log(colors.dim(`Segments: ${curriculum.segments.length}`));
   console.log();
-  console.log(colors.dim('Your code is saved with git. Run "git log" to see progress.'));
+  console.log(
+    colors.dim('Your code is saved with git. Run "git log" to see progress.'),
+  );
   console.log();
 }
 
@@ -556,7 +609,7 @@ export function displayCurriculumComplete(curriculum: Curriculum): void {
  * Display error message
  */
 export function displayError(message: string): void {
-  console.error(colors.error(symbols.error + ' ' + message));
+  console.error(colors.error(symbols.error + " " + message));
 }
 
 /**
@@ -569,21 +622,24 @@ export function displayInfo(message: string): void {
 /**
  * Mode display info with colors and descriptions
  */
-const MODE_DISPLAY: Record<string, { color: typeof colors.tan; label: string; description: string }> = {
+const MODE_DISPLAY: Record<
+  string,
+  { color: typeof colors.tan; label: string; description: string }
+> = {
   tutor: {
     color: colors.tan,
-    label: 'tutor',
-    description: 'line by line',
+    label: "tutor",
+    description: "line by line",
   },
   block: {
-    color: colors.primary,  // green
-    label: 'code',
-    description: 'freely',
+    color: colors.primary, // green
+    label: "code",
+    description: "freely",
   },
   discuss: {
     color: colors.purple,
-    label: 'discuss',
-    description: 'ideas and ask questions',
+    label: "discuss",
+    description: "ideas and ask questions",
   },
 };
 
@@ -594,7 +650,10 @@ const MODE_DISPLAY: Record<string, { color: typeof colors.tan; label: string; de
 export function getModeIndicator(): string {
   const current = getMode();
   const display = MODE_DISPLAY[current];
-  return display.color(display.label) + colors.dim(` ${display.description} (shift+tab to cycle)`);
+  return (
+    display.color(display.label) +
+    colors.dim(` ${display.description} (shift+tab to cycle)`)
+  );
 }
 
 /**
@@ -632,7 +691,7 @@ export function displayPrompt(): void {
   console.log(drawBar());
 
   // Input prompt (gray caret)
-  process.stdout.write(colors.dim(symbols.arrow + ' '));
+  process.stdout.write(colors.dim(symbols.arrow + " "));
 }
 
 /**
@@ -649,14 +708,14 @@ export function displayBottomBar(): void {
  * Display prompt without the hint (cleaner for heredoc continuation)
  */
 export function displayContinuationPrompt(): void {
-  process.stdout.write(colors.dim('> '));
+  process.stdout.write(colors.dim("> "));
 }
 
 /**
  * Display helper text
  */
 export function displayHelperText(): void {
-  console.log(colors.muted('esc to stop'));
+  console.log(colors.muted("esc to stop"));
 }
 
 // Track lines used by question prompt for proper cleanup
@@ -665,11 +724,15 @@ let questionPromptLines = 4;
 /**
  * Word-wrap text to fit within maxWidth, keeping words intact
  */
-function wordWrap(text: string, maxWidth: number, indent: string = ''): string[] {
+function wordWrap(
+  text: string,
+  maxWidth: number,
+  indent: string = "",
+): string[] {
   if (text.length <= maxWidth) return [text];
-  const words = text.split(' ');
+  const words = text.split(" ");
   const lines: string[] = [];
-  let currentLine = '';
+  let currentLine = "";
   for (const word of words) {
     const testLine = currentLine ? `${currentLine} ${word}` : word;
     if (testLine.length <= maxWidth) {
@@ -688,7 +751,7 @@ function wordWrap(text: string, maxWidth: number, indent: string = ''): string[]
  */
 function getDisplayLineCount(text: string): number {
   const termWidth = process.stdout.columns || 80;
-  const lines = text.split('\n');
+  const lines = text.split("\n");
   let totalLines = 0;
   for (const line of lines) {
     // Each line takes at least 1 row, plus additional rows if it wraps
@@ -711,26 +774,26 @@ export function displayQuestionPrompt(question: string): void {
   questionPromptLines = questionLineCount + 1 + 1 + 1; // question + top bar + input + bottom bar
 
   // Ensure we start on a fresh line
-  process.stdout.write('\n');
+  process.stdout.write("\n");
 
   // Draw question text OUTSIDE the entry box (tutor's message)
-  process.stdout.write('\r\x1B[K' + colors.text(cleanQuestion) + '\n\n');
+  process.stdout.write("\r\x1B[K" + colors.text(cleanQuestion) + "\n\n");
 
   // Draw entry box: top bar, caret, bottom bar
   // Top bar
-  process.stdout.write('\r\x1B[K' + drawBar() + '\n');
+  process.stdout.write("\r\x1B[K" + drawBar() + "\n");
   // Input line with green caret
-  process.stdout.write('\r\x1B[K' + colors.primary(symbols.arrow + ' '));
+  process.stdout.write("\r\x1B[K" + colors.primary(symbols.arrow + " "));
   // Save cursor column (after "› ")
-  process.stdout.write('\x1B[s'); // Save cursor position
-  process.stdout.write('\n');
+  process.stdout.write("\x1B[s"); // Save cursor position
+  process.stdout.write("\n");
   // Bottom bar
-  process.stdout.write('\r\x1B[K' + drawBar());
+  process.stdout.write("\r\x1B[K" + drawBar());
   // Restore cursor to input line
-  process.stdout.write('\x1B[u'); // Restore cursor position
+  process.stdout.write("\x1B[u"); // Restore cursor position
 
   // Show cursor for typing (needed for raw mode input)
-  process.stdout.write('\x1B[?25h');
+  process.stdout.write("\x1B[?25h");
 }
 
 /**
@@ -741,11 +804,11 @@ export function redrawQuestionBottomBar(): void {
   if (!process.stdout.isTTY) return;
 
   // Save current cursor position
-  process.stdout.write('\x1B[s');
+  process.stdout.write("\x1B[s");
   // Move to next line and draw bottom bar
-  process.stdout.write('\n\r\x1B[K' + drawBar());
+  process.stdout.write("\n\r\x1B[K" + drawBar());
   // Restore cursor position
-  process.stdout.write('\x1B[u');
+  process.stdout.write("\x1B[u");
 }
 
 /**
@@ -769,37 +832,38 @@ export function closeQuestionPrompt(question: string, answer: string): void {
   // Calculate how many lines the input occupied (with wrapping)
   const termWidth = process.stdout.columns || 80;
   const inputWidth = termWidth - 2; // "› " is 2 chars
-  const inputLineCount = answer.length === 0 ? 1 : Math.ceil(answer.length / inputWidth);
+  const inputLineCount =
+    answer.length === 0 ? 1 : Math.ceil(answer.length / inputWidth);
 
   // Cursor is on the last input line. Move up to start of question:
   // (inputLineCount - 1) to first input line + 1 for top bar + 1 for blank line + questionLineCount
-  const linesToMoveUp = (inputLineCount - 1) + 1 + 1 + questionLineCount;
+  const linesToMoveUp = inputLineCount - 1 + 1 + 1 + questionLineCount;
   if (linesToMoveUp > 0) {
     process.stdout.write(`\x1B[${linesToMoveUp}A`);
   }
 
   // Clear from cursor to end of screen
-  process.stdout.write('\r\x1B[J');
+  process.stdout.write("\r\x1B[J");
 
   // Redraw as clean log entry (condensed - no bars)
-  const prefix = symbols.arrow + ' ';
+  const prefix = symbols.arrow + " ";
   const prefixLen = 2; // "› " is 2 chars
 
-  process.stdout.write('\r\x1B[K');
+  process.stdout.write("\r\x1B[K");
   console.log(colors.dim(cleanQuestion));
 
   // Word-wrap the answer, with continuation lines indented to align
-  const wrappedAnswer = wordWrap(answer, termWidth - prefixLen, '  ');
+  const wrappedAnswer = wordWrap(answer, termWidth - prefixLen, "  ");
   wrappedAnswer.forEach((line, i) => {
-    process.stdout.write('\r\x1B[K');
+    process.stdout.write("\r\x1B[K");
     if (i === 0) {
       console.log(colors.primary(prefix) + line);
     } else {
-      console.log('  ' + line);
+      console.log("  " + line);
     }
   });
 
-  process.stdout.write('\r\x1B[K');
+  process.stdout.write("\r\x1B[K");
   console.log(); // Blank line
 }
 
@@ -808,7 +872,7 @@ export function closeQuestionPrompt(question: string, answer: string): void {
  */
 export function displayPreflightError(error: string): void {
   console.error();
-  console.error(colors.error(symbols.error + ' Setup failed'));
+  console.error(colors.error(symbols.error + " Setup failed"));
   console.error(colors.dim(error));
   console.error();
 }
@@ -817,7 +881,7 @@ export function displayPreflightError(error: string): void {
  * Display git initialization
  */
 export function displayGitInit(): void {
-  console.log(colors.dim('Git initialized'));
+  console.log(colors.dim("Git initialized"));
 }
 
 /**
@@ -861,7 +925,7 @@ export function getExpectedText(): string | null {
 export function displayTypingProgress(userInput: string): void {
   if (!expectedText) return;
 
-  let output = '';
+  let output = "";
   const expected = expectedText;
 
   for (let i = 0; i < expected.length; i++) {
@@ -884,8 +948,8 @@ export function displayTypingProgress(userInput: string): void {
   }
 
   // Clear line and rewrite
-  process.stdout.write('\r\x1B[K');
-  process.stdout.write(colors.dim('  target: ') + output);
+  process.stdout.write("\r\x1B[K");
+  process.stdout.write(colors.dim("  target: ") + output);
 }
 
 /**
@@ -900,7 +964,7 @@ export function displayTargetLine(line: string, explanation?: string): void {
     console.log(colors.dim(`  // ${explanation}`));
   }
   // Main command in green to stand out
-  console.log('  ' + colors.primary(line));
+  console.log("  " + colors.primary(line));
   console.log();
 }
 
@@ -908,12 +972,15 @@ export function displayTargetLine(line: string, explanation?: string): void {
  * Display a command with explanation above
  * Uses coding convention: comment above, code below
  */
-export function displayCommandInstruction(command: string, explanation: string): void {
+export function displayCommandInstruction(
+  command: string,
+  explanation: string,
+): void {
   console.log();
   // Explanation as a comment above (gray)
   console.log(colors.dim(`  // ${explanation}`));
   // Main command in green
-  console.log('  ' + colors.primary(command));
+  console.log("  " + colors.primary(command));
   console.log();
 }
 
@@ -924,10 +991,10 @@ export function updateTypingProgress(currentInput: string): void {
   if (!expectedText) return;
 
   // Move cursor up to the target line and redraw
-  process.stdout.write('\x1B[1A'); // Move up one line
-  process.stdout.write('\r\x1B[K'); // Clear line
+  process.stdout.write("\x1B[1A"); // Move up one line
+  process.stdout.write("\r\x1B[K"); // Clear line
 
-  let output = colors.dim('  target: ');
+  let output = colors.dim("  target: ");
 
   for (let i = 0; i < expectedText.length; i++) {
     if (i < currentInput.length) {
@@ -981,10 +1048,13 @@ export function getTypingAccuracy(userInput: string): number {
  * - Green: correctly typed characters
  * Characters only turn green when typed correctly in sequence
  */
-export function displayTyperSharkTarget(expected: string, correctCount: number): void {
+export function displayTyperSharkTarget(
+  expected: string,
+  correctCount: number,
+): void {
   if (!process.stdout.isTTY) return;
 
-  let output = '  ';
+  let output = "  ";
   for (let i = 0; i < expected.length; i++) {
     if (i < correctCount) {
       // Correctly typed - green
@@ -996,16 +1066,19 @@ export function displayTyperSharkTarget(expected: string, correctCount: number):
   }
 
   // Clear line and write target
-  process.stdout.write('\r\x1B[K' + output);
+  process.stdout.write("\r\x1B[K" + output);
 }
 
 /**
  * Display the input line below the target
  */
-export function displayTyperSharkInput(input: string, prompt: string = '› '): void {
+export function displayTyperSharkInput(
+  input: string,
+  prompt: string = "› ",
+): void {
   if (!process.stdout.isTTY) return;
 
-  process.stdout.write('\n' + colors.primary(prompt) + input);
+  process.stdout.write("\n" + colors.primary(prompt) + input);
 }
 
 /**
@@ -1018,7 +1091,11 @@ export function displayTyperSharkInput(input: string, prompt: string = '› '): 
  *   ──────────── (bottom bar)
  *   mode footer
  */
-export function redrawTyperShark(expected: string, input: string, correctCount: number): void {
+export function redrawTyperShark(
+  expected: string,
+  input: string,
+  correctCount: number,
+): void {
   if (!process.stdout.isTTY) return;
 
   // Truncate to prevent line wrapping which breaks cursor positioning
@@ -1027,10 +1104,10 @@ export function redrawTyperShark(expected: string, input: string, correctCount: 
 
   // Move up 2 lines (from input line, past top bar, to target line)
   // Use \x1B[2A (cursor up) which doesn't cause scrolling issues
-  process.stdout.write('\x1B[2A\r\x1B[K');
+  process.stdout.write("\x1B[2A\r\x1B[K");
 
   // Draw target (truncated, with progress coloring)
-  let targetOutput = '  ';
+  let targetOutput = "  ";
   for (let i = 0; i < truncatedExpected.length; i++) {
     // Map truncated position to original position for correct coloring
     if (i < correctCount && i < expected.length) {
@@ -1043,26 +1120,26 @@ export function redrawTyperShark(expected: string, input: string, correctCount: 
 
   // Move down to top bar, redraw it
   // Use \x1B[1B (cursor down) instead of \n to avoid terminal scrolling
-  process.stdout.write('\x1B[1B\r\x1B[K');
+  process.stdout.write("\x1B[1B\r\x1B[K");
   process.stdout.write(drawBar());
 
   // Move down, clear, draw input (show rightmost portion if too long)
-  process.stdout.write('\x1B[1B\r\x1B[K');
+  process.stdout.write("\x1B[1B\r\x1B[K");
   const visibleInput = getVisibleInput(input, codeWidth);
-  process.stdout.write(colors.dim('› ') + visibleInput);
+  process.stdout.write(colors.dim("› ") + visibleInput);
 
   // Move down, redraw bottom bar
-  process.stdout.write('\x1B[1B\r\x1B[K');
+  process.stdout.write("\x1B[1B\r\x1B[K");
   process.stdout.write(drawBar());
 
   // Move down, redraw mode footer
-  process.stdout.write('\x1B[1B\r\x1B[K');
+  process.stdout.write("\x1B[1B\r\x1B[K");
   displayModeFooterInline();
 
   // Move cursor back up to input line
-  process.stdout.write('\x1B[2A');
+  process.stdout.write("\x1B[2A");
   // Position cursor at end of input
-  process.stdout.write(`\r${colors.dim('› ')}${visibleInput}`);
+  process.stdout.write(`\r${colors.dim("› ")}${visibleInput}`);
 }
 
 /**
@@ -1074,8 +1151,8 @@ export function clearForTyperShark(linesToClear: number = 0): void {
 
   // Move up and clear each line
   for (let i = 0; i < linesToClear; i++) {
-    process.stdout.write('\x1B[1A'); // Move up one line
-    process.stdout.write('\r\x1B[K'); // Clear line
+    process.stdout.write("\x1B[1A"); // Move up one line
+    process.stdout.write("\r\x1B[K"); // Clear line
   }
 }
 
@@ -1090,7 +1167,10 @@ export function clearForTyperShark(linesToClear: number = 0): void {
  *   ──────────── (bottom bar)
  *   mode footer
  */
-export function initTyperSharkDisplay(expected: string, explanation?: string): void {
+export function initTyperSharkDisplay(
+  expected: string,
+  explanation?: string,
+): void {
   // Add buffer lines to ensure we have space at terminal bottom
   // This prevents scroll-induced cursor positioning issues during redraw
   // The display needs ~6 lines, so we ensure at least that much space
@@ -1111,19 +1191,19 @@ export function initTyperSharkDisplay(expected: string, explanation?: string): v
     console.log(colors.dim(`  // ${truncatedExplanation}`));
   }
   // Show target line in tan (all untyped) - truncated to fit terminal
-  console.log('  ' + colors.tan(truncatedExpected));
+  console.log("  " + colors.tan(truncatedExpected));
   // Top gray line - upper border of entry field
   console.log(drawBar());
   // Show input prompt (cursor will be here)
-  console.log(colors.dim('› '));
+  console.log(colors.dim("› "));
   // Bottom gray line - lower border of entry field
   console.log(drawBar());
   // Mode footer
   displayModeFooter();
   // Move cursor back up to input line (3 lines up: after mode footer -> mode footer -> bottom bar -> input)
-  process.stdout.write('\x1B[3A');
+  process.stdout.write("\x1B[3A");
   // Position cursor after prompt
-  process.stdout.write('\r' + colors.dim('› '));
+  process.stdout.write("\r" + colors.dim("› "));
 }
 
 /**
@@ -1132,7 +1212,10 @@ export function initTyperSharkDisplay(expected: string, explanation?: string): v
  * @param inputText - the text the user typed (to show in log)
  * @param hasExplanation - whether explanation was displayed (affects line count)
  */
-export function finishTyperSharkDisplay(inputText: string, hasExplanation: boolean = false): void {
+export function finishTyperSharkDisplay(
+  inputText: string,
+  hasExplanation: boolean = false,
+): void {
   // Display structure from input line:
   //   -4 (or -5): blank line
   //   -3 (or -4): explanation (if present)
@@ -1151,9 +1234,9 @@ export function finishTyperSharkDisplay(inputText: string, hasExplanation: boole
 
   // Clear all display lines
   for (let i = 0; i < totalLines; i++) {
-    process.stdout.write('\r\x1B[K'); // Clear line
+    process.stdout.write("\r\x1B[K"); // Clear line
     if (i < totalLines - 1) {
-      process.stdout.write('\x1B[1B'); // Move down
+      process.stdout.write("\x1B[1B"); // Move down
     }
   }
 
@@ -1161,7 +1244,7 @@ export function finishTyperSharkDisplay(inputText: string, hasExplanation: boole
   process.stdout.write(`\x1B[${totalLines - 1}A`);
 
   // Print just the entered text as a log entry
-  console.log(colors.success('✓ ') + inputText);
+  console.log(colors.success("✓ ") + inputText);
 }
 
 // ============================================
@@ -1169,10 +1252,10 @@ export function finishTyperSharkDisplay(inputText: string, hasExplanation: boole
 // ============================================
 
 export interface MultiLineState {
-  currentLineIndex: number;   // Which line we're currently typing
-  completedLines: string[];   // Lines that have been completed
-  currentInput: string;       // Current input for the active line
-  correctCount: number;       // Correct chars in current line
+  currentLineIndex: number; // Which line we're currently typing
+  completedLines: string[]; // Lines that have been completed
+  currentInput: string; // Current input for the active line
+  correctCount: number; // Correct chars in current line
 }
 
 /**
@@ -1205,7 +1288,7 @@ export interface MultiLineState {
 export function initTerminalMultiLine(
   expectedLines: string[],
   linesToClear: number = 0,
-  explanation?: string
+  explanation?: string,
 ): void {
   // Clear the raw streamed code that was displayed before
   if (linesToClear > 0) {
@@ -1227,16 +1310,16 @@ export function initTerminalMultiLine(
   }
 
   // Show expected code (all in tan - will turn green as typed)
-  console.log(colors.dim('  Expected:'));
+  console.log(colors.dim("  Expected:"));
   for (const line of expectedLines) {
-    console.log('  ' + colors.tan(line));
+    console.log("  " + colors.tan(line));
   }
 
   // Top gray bar separating expected from input
   console.log(drawBar());
 
   // Initial input prompt (with newline so we can draw bottom elements)
-  console.log(colors.dim('› '));
+  console.log(colors.dim("› "));
 
   // Bottom gray bar
   console.log(drawBar());
@@ -1245,9 +1328,9 @@ export function initTerminalMultiLine(
   displayModeFooter();
 
   // Move cursor back up to input line (3 lines up: after mode footer newline -> mode footer -> bottom bar -> input)
-  process.stdout.write('\x1B[3A');
+  process.stdout.write("\x1B[3A");
   // Position cursor after prompt (no need to rewrite caret, it's already there from console.log)
-  process.stdout.write('\r\x1B[K' + colors.dim('› '));
+  process.stdout.write("\r\x1B[K" + colors.dim("› "));
 }
 
 /**
@@ -1278,7 +1361,7 @@ export function redrawTerminalMultiLine(
   correctCount: number,
   inputLines: string[],
   currentLineInput: string,
-  hasExplanation: boolean = false
+  hasExplanation: boolean = false,
 ): void {
   if (!process.stdout.isTTY) return;
 
@@ -1288,7 +1371,8 @@ export function redrawTerminalMultiLine(
   // - expected code lines: expectedLines.length
   // - top gray bar: 1
   // - input lines (completed): inputLines.length
-  const totalLinesAboveCursor = (hasExplanation ? 1 : 0) + 1 + expectedLines.length + 1 + inputLines.length;
+  const totalLinesAboveCursor =
+    (hasExplanation ? 1 : 0) + 1 + expectedLines.length + 1 + inputLines.length;
 
   // Move cursor up to top of display (from current input line to Expected: label)
   process.stdout.write(`\x1B[${totalLinesAboveCursor}A`);
@@ -1296,19 +1380,19 @@ export function redrawTerminalMultiLine(
   // Redraw explanation if present
   // Use \x1B[1B (cursor down) instead of \n to avoid terminal scrolling
   if (hasExplanation) {
-    process.stdout.write('\r\x1B[K\x1B[1B');
+    process.stdout.write("\r\x1B[K\x1B[1B");
   }
 
   // "Expected:" label
-  process.stdout.write('\r\x1B[K');
-  process.stdout.write(colors.dim('  Expected:'));
-  process.stdout.write('\x1B[1B');
+  process.stdout.write("\r\x1B[K");
+  process.stdout.write(colors.dim("  Expected:"));
+  process.stdout.write("\x1B[1B");
 
   // Redraw expected code with green progress
   let charIndex = 0;
   for (let lineIdx = 0; lineIdx < expectedLines.length; lineIdx++) {
     const line = expectedLines[lineIdx];
-    process.stdout.write('\r\x1B[K  ');
+    process.stdout.write("\r\x1B[K  ");
 
     // Draw each character - green if typed correctly, tan if not yet
     for (let i = 0; i < line.length; i++) {
@@ -1319,7 +1403,7 @@ export function redrawTerminalMultiLine(
       }
       charIndex++;
     }
-    process.stdout.write('\x1B[1B');
+    process.stdout.write("\x1B[1B");
 
     // Account for newline character in expected text (except after last line)
     if (lineIdx < expectedLines.length - 1) {
@@ -1328,35 +1412,36 @@ export function redrawTerminalMultiLine(
   }
 
   // Top gray bar
-  process.stdout.write('\r\x1B[K');
+  process.stdout.write("\r\x1B[K");
   process.stdout.write(drawBar());
-  process.stdout.write('\x1B[1B');
+  process.stdout.write("\x1B[1B");
 
   // Redraw completed input lines
   for (let i = 0; i < inputLines.length; i++) {
-    process.stdout.write('\r\x1B[K');
-    const prompt = i === 0 ? colors.dim('› ') : colors.dim('> ');
+    process.stdout.write("\r\x1B[K");
+    const prompt = i === 0 ? colors.dim("› ") : colors.dim("> ");
     process.stdout.write(prompt + inputLines[i]);
-    process.stdout.write('\x1B[1B');
+    process.stdout.write("\x1B[1B");
   }
 
   // Current input line
-  process.stdout.write('\r\x1B[K');
-  const currentPrompt = inputLines.length === 0 ? colors.dim('› ') : colors.dim('> ');
+  process.stdout.write("\r\x1B[K");
+  const currentPrompt =
+    inputLines.length === 0 ? colors.dim("› ") : colors.dim("> ");
   process.stdout.write(currentPrompt + currentLineInput);
-  process.stdout.write('\x1B[1B');
+  process.stdout.write("\x1B[1B");
 
   // Bottom gray bar
-  process.stdout.write('\r\x1B[K');
+  process.stdout.write("\r\x1B[K");
   process.stdout.write(drawBar());
-  process.stdout.write('\x1B[1B');
+  process.stdout.write("\x1B[1B");
 
   // Mode footer
-  process.stdout.write('\r\x1B[K');
+  process.stdout.write("\r\x1B[K");
   displayModeFooterInline();
 
   // Move cursor back up to current input line (2 lines up: mode footer, bottom bar)
-  process.stdout.write('\x1B[2A');
+  process.stdout.write("\x1B[2A");
   // Position cursor at end of current input
   process.stdout.write(`\r${currentPrompt}${currentLineInput}`);
 }
@@ -1366,9 +1451,9 @@ export function initMultiLineTyperShark(
   lines: Array<{ comment: string; code: string }>,
   currentLineIndex: number = 0,
   linesToClear: number = 0,
-  explanation?: string
+  explanation?: string,
 ): void {
-  const expectedLines = lines.map(l => l.code);
+  const expectedLines = lines.map((l) => l.code);
   initTerminalMultiLine(expectedLines, linesToClear, explanation);
 }
 
@@ -1378,9 +1463,16 @@ export function redrawMultiLineTyperShark(
   currentInput: string,
   correctCount: number,
   completedLines: string[] = [],
-  hasExplanation: boolean = false
+  hasExplanation: boolean = false,
 ): void {
-  const expectedLines = lines.map(l => l.code);
-  const expectedText = expectedLines.join('\n');
-  redrawTerminalMultiLine(expectedLines, expectedText, correctCount, completedLines, currentInput, hasExplanation);
+  const expectedLines = lines.map((l) => l.code);
+  const expectedText = expectedLines.join("\n");
+  redrawTerminalMultiLine(
+    expectedLines,
+    expectedText,
+    correctCount,
+    completedLines,
+    currentInput,
+    hasExplanation,
+  );
 }
