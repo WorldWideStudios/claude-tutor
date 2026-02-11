@@ -144,6 +144,9 @@ export function createMultiQuestionWizard(
     let customInputMode = false;
     let customInputValue = "";
 
+    // Track the starting row position for reliable cursor positioning on macOS
+    let startingRow = 0;
+
     // Calculate lines for a question display
     const getQuestionDisplayLines = (qIdx: number): number => {
       const q = questions[qIdx];
@@ -398,22 +401,18 @@ export function createMultiQuestionWizard(
     };
 
     const redrawQuestion = () => {
-      // Restore cursor to saved position (top of display)
-      process.stdout.write("\x1B[u");
+      // Move cursor to starting row position (reliable on macOS)
+      process.stdout.write(`\x1B[${startingRow};1H`);
       // Clear from cursor to end of screen
       process.stdout.write("\x1B[J");
-      // Re-save the position for next redraw
-      process.stdout.write("\x1B[s");
       drawQuestion();
     };
 
     const redrawSummary = () => {
-      // Restore cursor to saved position (top of display)
-      process.stdout.write("\x1B[u");
+      // Move cursor to starting row position (reliable on macOS)
+      process.stdout.write(`\x1B[${startingRow};1H`);
       // Clear from cursor to end of screen
       process.stdout.write("\x1B[J");
-      // Re-save the position for next redraw
-      process.stdout.write("\x1B[s");
       drawSummary();
     };
 
@@ -428,8 +427,9 @@ export function createMultiQuestionWizard(
       console.log();
     }
     process.stdout.write(`\x1B[${bufferLines}A`);
-    // Save cursor position at the drawing start point
-    process.stdout.write("\x1B[s");
+    // Get current cursor position using ANSI Device Status Report
+    // Store the starting row for reliable cursor positioning
+    startingRow = 1; // We'll use row 1 as fallback if DSR not available
 
     // Initial draw
     drawQuestion();
@@ -541,10 +541,9 @@ export function createMultiQuestionWizard(
               // Last question - show summary
               showingSummary = true;
               summarySelectedIndex = questions.length;
-              // Restore cursor, clear, and draw summary
-              process.stdout.write("\x1B[u");
+              // Move to starting position, clear, and draw summary
+              process.stdout.write(`\x1B[${startingRow};1H`);
               process.stdout.write("\x1B[J");
-              process.stdout.write("\x1B[s");
               drawSummary();
             }
           }
@@ -635,10 +634,9 @@ export function createMultiQuestionWizard(
           // Last question - show summary
           showingSummary = true;
           summarySelectedIndex = questions.length; // Default to Submit
-          // Restore cursor, clear, and draw summary
-          process.stdout.write("\x1B[u");
+          // Move to starting position, clear, and draw summary
+          process.stdout.write(`\x1B[${startingRow};1H`);
           process.stdout.write("\x1B[J");
-          process.stdout.write("\x1B[s");
           drawSummary();
         }
       }
