@@ -1116,7 +1116,8 @@ export function redrawTyperShark(
       } else {
         // Wrong character typed - show expected character in red
         // If expected is space, show underscore to make it visible
-        const displayChar = truncatedExpected[i] === ' ' ? '_' : truncatedExpected[i];
+        const displayChar =
+          truncatedExpected[i] === " " ? "_" : truncatedExpected[i];
         targetOutput += colors.error(displayChar);
       }
     } else {
@@ -1417,7 +1418,7 @@ export function redrawTerminalMultiLine(
         } else {
           // Wrong character typed - show expected character in red
           // If expected is space, show underscore to make it visible
-          const displayChar = line[i] === ' ' ? '_' : line[i];
+          const displayChar = line[i] === " " ? "_" : line[i];
           process.stdout.write(colors.error(displayChar));
         }
       } else {
