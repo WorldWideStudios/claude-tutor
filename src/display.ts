@@ -1394,17 +1394,27 @@ export function redrawTerminalMultiLine(
   process.stdout.write(colors.dim("  Expected:"));
   process.stdout.write("\x1B[1B");
 
-  // Redraw expected code with green progress
+  // Redraw expected code with green progress and red errors
   let charIndex = 0;
+  // Calculate total input length (all completed lines + current input)
+  const totalInput = inputLines.join("\n") + (inputLines.length > 0 ? "\n" : "") + currentLineInput;
+  
   for (let lineIdx = 0; lineIdx < expectedLines.length; lineIdx++) {
     const line = expectedLines[lineIdx];
     process.stdout.write("\r\x1B[K  ");
 
-    // Draw each character - green if typed correctly, tan if not yet
+    // Draw each character - green if typed correctly, red if wrong, tan if not yet typed
     for (let i = 0; i < line.length; i++) {
-      if (charIndex < correctCount) {
-        process.stdout.write(colors.success(line[i]));
+      if (charIndex < totalInput.length) {
+        // Character has been typed - check if correct
+        if (totalInput[charIndex] === expectedText[charIndex]) {
+          process.stdout.write(colors.success(line[i]));
+        } else {
+          // Wrong character typed - show expected character in red
+          process.stdout.write(colors.error(line[i]));
+        }
       } else {
+        // Not yet typed - show in tan
         process.stdout.write(colors.tan(line[i]));
       }
       charIndex++;

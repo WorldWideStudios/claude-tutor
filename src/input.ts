@@ -2121,9 +2121,16 @@ function redrawMultiLineCodeBlock(
         // Current line - show with partial progress
         let output = colors.primary(`${lineNum}│ `);
         for (let j = 0; j < code.length; j++) {
-          if (j < currentInput.length && currentInput[j] === code[j]) {
-            output += colors.success(code[j]);
+          if (j < currentInput.length) {
+            // Character has been typed - check if correct
+            if (currentInput[j] === code[j]) {
+              output += colors.success(code[j]);
+            } else {
+              // Wrong character typed - show expected character in red
+              output += colors.error(code[j]);
+            }
           } else {
+            // Not yet typed - show in tan
             output += colors.tan(code[j]);
           }
         }
