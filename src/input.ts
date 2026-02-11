@@ -2127,7 +2127,9 @@ function redrawMultiLineCodeBlock(
               output += colors.success(code[j]);
             } else {
               // Wrong character typed - show expected character in red
-              output += colors.error(code[j]);
+              // If expected is space, show underscore to make it visible
+              const displayChar = code[j] === ' ' ? '_' : code[j];
+              output += colors.error(displayChar);
             }
           } else {
             // Not yet typed - show in tan

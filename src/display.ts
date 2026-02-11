@@ -1115,7 +1115,9 @@ export function redrawTyperShark(
         targetOutput += colors.success(truncatedExpected[i]);
       } else {
         // Wrong character typed - show expected character in red
-        targetOutput += colors.error(truncatedExpected[i]);
+        // If expected is space, show underscore to make it visible
+        const displayChar = truncatedExpected[i] === ' ' ? '_' : truncatedExpected[i];
+        targetOutput += colors.error(displayChar);
       }
     } else {
       // Not yet typed - show in tan
@@ -1397,8 +1399,11 @@ export function redrawTerminalMultiLine(
   // Redraw expected code with green progress and red errors
   let charIndex = 0;
   // Calculate total input length (all completed lines + current input)
-  const totalInput = inputLines.join("\n") + (inputLines.length > 0 ? "\n" : "") + currentLineInput;
-  
+  const totalInput =
+    inputLines.join("\n") +
+    (inputLines.length > 0 ? "\n" : "") +
+    currentLineInput;
+
   for (let lineIdx = 0; lineIdx < expectedLines.length; lineIdx++) {
     const line = expectedLines[lineIdx];
     process.stdout.write("\r\x1B[K  ");
@@ -1411,7 +1416,9 @@ export function redrawTerminalMultiLine(
           process.stdout.write(colors.success(line[i]));
         } else {
           // Wrong character typed - show expected character in red
-          process.stdout.write(colors.error(line[i]));
+          // If expected is space, show underscore to make it visible
+          const displayChar = line[i] === ' ' ? '_' : line[i];
+          process.stdout.write(colors.error(displayChar));
         }
       } else {
         // Not yet typed - show in tan
