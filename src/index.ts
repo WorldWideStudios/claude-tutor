@@ -67,8 +67,8 @@ program
   .option("--debug", "Enable debug logging")
   .action(async (options) => {
     // Enable debug mode if flag is set or DEBUG environment variable is true
-    if (options.debug || process.env.DEBUG === 'true') {
-      process.env.DEBUG = 'true';
+    if (options.debug || process.env.DEBUG === "true") {
+      process.env.DEBUG = "true";
     }
 
     // Check for updates and auto-update if available
@@ -174,9 +174,11 @@ async function startCommand(
   displayWelcome();
 
   try {
-    // Check for existing project in global state (if no directory specified)
-    // or in specified directory
-    const existingProject = await loadExistingProject(projectDir);
+    // When curriculum file is explicitly provided, skip existing project check
+    // and start fresh with the new curriculum
+    const existingProject = validatedCurriculumPath
+      ? null
+      : await loadExistingProject(projectDir);
 
     if (existingProject) {
       const { curriculum, state } = existingProject;
