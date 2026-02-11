@@ -2180,7 +2180,7 @@ function redrawMultiLineCodeBlock(
   // Move back to input line and position cursor
   process.stdout.write("\x1B[2A");
   // Position cursor at correct location
-  const cursorCol = prefixLen + displayCursorPos + 1; // +1 for 1-based column
+  const cursorCol = prefixLen + displayCursorPos; // + 1; // +1 for 1-based column
   process.stdout.write(`\r\x1B[${cursorCol}C`);
 
   // Show cursor
