@@ -99,7 +99,7 @@ export function createMultiQuestionWizard(
       return;
     }
 
-    const termWidth = process.stdout.columns || 80;
+    let termWidth = process.stdout.columns || 80;
     const answers: (string | null)[] = questions.map(() => null);
     const selectedIndices: number[] = questions.map(() => 0);
     let currentQuestionIndex = 0;
@@ -400,19 +400,31 @@ export function createMultiQuestionWizard(
       currentDisplayedLines = getSummaryDisplayLines();
     };
 
-    const redrawQuestion = () => {
-      // Move cursor to starting row position (reliable on macOS)
-      process.stdout.write(`\x1B[${startingRow};1H`);
-      // Clear from cursor to end of screen
-      process.stdout.write("\x1B[J");
+    const redrawQuestion = (fullClear: boolean = false) => {
+      if (fullClear) {
+        // Full screen clear for resize or major changes
+        process.stdout.write("\x1B[2J"); // Clear entire screen
+        process.stdout.write("\x1B[H"); // Move cursor to home
+      } else {
+        // Move cursor to starting row position (reliable on macOS)
+        process.stdout.write(`\x1B[${startingRow};1H`);
+        // Clear from cursor to end of screen
+        process.stdout.write("\x1B[J");
+      }
       drawQuestion();
     };
 
-    const redrawSummary = () => {
-      // Move cursor to starting row position (reliable on macOS)
-      process.stdout.write(`\x1B[${startingRow};1H`);
-      // Clear from cursor to end of screen
-      process.stdout.write("\x1B[J");
+    const redrawSummary = (fullClear: boolean = false) => {
+      if (fullClear) {
+        // Full screen clear for resize or major changes
+        process.stdout.write("\x1B[2J"); // Clear entire screen
+        process.stdout.write("\x1B[H"); // Move cursor to home
+      } else {
+        // Move cursor to starting row position (reliable on macOS)
+        process.stdout.write(`\x1B[${startingRow};1H`);
+        // Clear from cursor to end of screen
+        process.stdout.write("\x1B[J");
+      }
       drawSummary();
     };
 
@@ -450,6 +462,7 @@ export function createMultiQuestionWizard(
       process.stdin.pause(); // Stop receiving data during transition
       process.stdin.setRawMode(false);
       process.stdin.removeListener("data", handleKeypress);
+      process.stdout.removeListener("resize", handleResize);
       if (escapeTimeout) clearTimeout(escapeTimeout);
     };
 
@@ -665,7 +678,23 @@ export function createMultiQuestionWizard(
       }
     };
 
+    const handleResize = () => {
+      termWidth = process.stdout.columns || 80;
+      // Debug: Add visible feedback
+      process.stdout.write("\x1B[2J\x1B[H"); // Clear screen and go to top
+      console.log(`[RESIZE DETECTED: ${termWidth} cols]`);
+      setTimeout(() => {
+        process.stdout.write("\x1B[2J\x1B[H"); // Clear again
+        if (showingSummary) {
+          drawSummary();
+        } else {
+          drawQuestion();
+        }
+      }, 100);
+    };
+
     process.stdin.on("data", handleKeypress);
+    process.stdout.on("resize", handleResize);
   });
 }
 
