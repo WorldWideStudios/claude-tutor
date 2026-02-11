@@ -1585,19 +1585,17 @@ export function createTyperSharkInput(
         return;
       }
 
-      // Enter - submit input (only if correct in tutor mode)
+      // Enter - submit input (require exact match when expected code is shown)
       if (key === "\r" || key === "\n") {
-        // In tutor mode, require exact match before allowing Enter
-        if (isTutorMode()) {
-          // Check if input matches expected text exactly
-          if (inputBuffer !== expectedText) {
-            // Don't allow submission - flash/indicate error
-            // Just redraw to show current state (user needs to fix their input)
-            redrawTyperShark(expectedText, inputBuffer, correctCount);
-            return;
-          }
+        // When expected code is shown (teaching/guiding context), require exact match
+        // Check if input matches expected text exactly
+        if (inputBuffer !== expectedText) {
+          // Don't allow submission - flash/indicate error
+          // Just redraw to show current state (user needs to fix their input)
+          redrawTyperShark(expectedText, inputBuffer, correctCount);
+          return;
         }
-        // In block mode or when input is correct, allow submission
+        // When input is correct, allow submission
         cleanup();
         finishTyperSharkDisplay(inputBuffer, !!explanation); // Clear display and show entered text
         resolve(inputBuffer);

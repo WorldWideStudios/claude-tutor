@@ -1109,10 +1109,16 @@ export function redrawTyperShark(
   // Draw target (truncated, with progress coloring)
   let targetOutput = "  ";
   for (let i = 0; i < truncatedExpected.length; i++) {
-    // Map truncated position to original position for correct coloring
-    if (i < correctCount && i < expected.length) {
-      targetOutput += colors.success(truncatedExpected[i]);
+    if (i < input.length && i < expected.length) {
+      // Character has been typed - show if correct or incorrect
+      if (input[i] === expected[i]) {
+        targetOutput += colors.success(truncatedExpected[i]);
+      } else {
+        // Wrong character typed - show expected character in red
+        targetOutput += colors.error(truncatedExpected[i]);
+      }
     } else {
+      // Not yet typed - show in tan
       targetOutput += colors.tan(truncatedExpected[i]);
     }
   }
