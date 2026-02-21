@@ -125,21 +125,16 @@ export async function runTutorLoop(
       progress.syntaxVerified &&
       progress.codeReviewed
     ) {
-      // If not at final step, advance to next step
       if (currentStep < totalSteps - 1) {
         debugLog(
           `[TutorLoop] Resuming: current golden step ${currentStep} already complete, advancing...`,
         );
         await goldenCodeManager.advance();
       } else {
-        // At final step and it's complete - clear it so it won't reload
         debugLog(
-          `[TutorLoop] Resuming: final golden step ${currentStep} already complete, clearing...`,
+          `[TutorLoop] Resuming: final golden step ${currentStep} already complete, marking done`,
         );
-        goldenCodeManager.clear();
-        // Mark this step as loaded to prevent reload
-        await goldenCodeManager.loadCurrentStep();
-        goldenCodeManager.clear();
+        goldenCodeManager.markAllStepsComplete();
       }
     }
   }

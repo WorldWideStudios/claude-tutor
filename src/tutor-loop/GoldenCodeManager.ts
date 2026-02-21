@@ -9,15 +9,15 @@ import { debugLog } from "../logging.js";
 
 /**
  * Manages golden code step progression and state.
- * Fixes the off-by-one bug and provides clear step index semantics:
  * - Step 0 is the first step
  * - currentIndex always points to the "current step to complete"
  * - Advancement happens after successful completion
+ * - allStepsCompleted prevents reloading after the final step is done
  */
 export class GoldenCodeManager {
   private currentIndex: number;
   private currentExpectedCode: ExtractedCode | null = null;
-  private lastLoadedIndex: number = -1; // Track last loaded step to prevent duplicates
+  private allStepsCompleted: boolean = false;
   private segment: Segment | null;
   private projectDir: string;
   private updateProgress: (
@@ -39,14 +39,20 @@ export class GoldenCodeManager {
 
   /**
    * Load the current step's code. Returns null if:
-   * - No segment
-   * - No golden code
-   * - Index out of bounds
-   * - Index is negative
-   * - Step was already loaded (prevents duplicate displays)
+   * - No segment or no golden code
+   * - All steps already completed
+   * - Index out of bounds or negative
    */
   async loadCurrentStep(): Promise<ExtractedCode | null> {
     if (!this.segment?.goldenCode) {
+      this.currentExpectedCode = null;
+      return null;
+    }
+
+    if (this.allStepsCompleted) {
+      debugLog(
+        `[GoldenCodeManager] All steps completed, not loading`,
+      );
       this.currentExpectedCode = null;
       return null;
     }
@@ -69,31 +75,21 @@ export class GoldenCodeManager {
       return null;
     }
 
-    // Prevent loading the same step twice in a row
-    if (this.currentIndex === this.lastLoadedIndex) {
-      debugLog(
-        `[GoldenCodeManager] Skipping reload of step ${this.currentIndex} (already loaded)`,
-      );
-      return this.currentExpectedCode;
-    }
-
     debugLog(
       `[GoldenCodeManager] Loading step ${this.currentIndex}/${totalSteps}`,
     );
 
-    // Load the step at currentIndex (fixes off-by-one bug - no +1 here!)
     this.currentExpectedCode = goldenCodeToExtractedCode(
       this.segment.goldenCode,
       this.currentIndex,
     );
-
-    this.lastLoadedIndex = this.currentIndex;
 
     return this.currentExpectedCode;
   }
 
   /**
    * Advance to the next step if available.
+   * If at the final step, marks all steps as completed.
    * Updates progress file with new index.
    */
   async advance(): Promise<void> {
@@ -101,10 +97,8 @@ export class GoldenCodeManager {
       return;
     }
 
-    // Only advance if there are more steps
     if (this.hasMoreSteps()) {
       this.currentIndex++;
-      this.lastLoadedIndex = -1; // Reset to allow loading the new step
       debugLog(
         `[GoldenCodeManager] Advanced to step ${this.currentIndex}/${this.getTotalSteps()}`,
       );
@@ -112,8 +106,9 @@ export class GoldenCodeManager {
         currentGoldenStep: this.currentIndex,
       });
     } else {
+      this.allStepsCompleted = true;
       debugLog(
-        `[GoldenCodeManager] At final step ${this.currentIndex}/${this.getTotalSteps()}, not advancing`,
+        `[GoldenCodeManager] Final step ${this.currentIndex}/${this.getTotalSteps()} done, marking all complete`,
       );
     }
   }
@@ -127,7 +122,6 @@ export class GoldenCodeManager {
       `[GoldenCodeManager] Clearing current code (index remains ${this.currentIndex})`,
     );
     this.currentExpectedCode = null;
-    // Don't reset lastLoadedIndex - we want to prevent reloading the same step
   }
 
   /**
@@ -167,6 +161,14 @@ export class GoldenCodeManager {
   }
 
   /**
+   * Mark all steps as complete. Used when resuming at a completed final step.
+   */
+  markAllStepsComplete(): void {
+    this.allStepsCompleted = true;
+    this.currentExpectedCode = null;
+  }
+
+  /**
    * Update to a new segment, resetting to step 0.
    * Used when transitioning between curriculum segments.
    */
@@ -174,6 +176,7 @@ export class GoldenCodeManager {
     this.segment = newSegment;
     this.currentIndex = 0;
     this.currentExpectedCode = null;
+    this.allStepsCompleted = false;
 
     if (newSegment?.goldenCode) {
       await this.updateProgress(this.projectDir, {

@@ -189,6 +189,7 @@ export class CommandExecutor {
       const output = execSync(command, {
         cwd: this.workingDir,
         encoding: "utf-8",
+        stdio: ['pipe', 'pipe', 'pipe'],
       });
       return { success: true, output: output.trim() };
     } catch (error: any) {

@@ -154,6 +154,42 @@ npm install`,
       const code = await manager.loadCurrentStep();
       expect(code).toBeNull();
     });
+
+    it("should reload after clear without needing advance", async () => {
+      const manager = new GoldenCodeManager(
+        mockSegment,
+        "/test/project",
+        mockUpdateProgress,
+        0,
+      );
+
+      const code1 = await manager.loadCurrentStep();
+      expect(code1).not.toBeNull();
+
+      manager.clear();
+      expect(manager.getCurrentCode()).toBeNull();
+
+      // Should reload the same step after clear
+      const code2 = await manager.loadCurrentStep();
+      expect(code2).not.toBeNull();
+      expect(code2?.code).toBe("mkdir src");
+    });
+
+    it("should return null after all steps completed", async () => {
+      const manager = new GoldenCodeManager(
+        mockSegment,
+        "/test/project",
+        mockUpdateProgress,
+        3, // Last step
+      );
+
+      await manager.loadCurrentStep();
+      manager.clear();
+      await manager.advance(); // Marks allStepsCompleted
+
+      const code = await manager.loadCurrentStep();
+      expect(code).toBeNull();
+    });
   });
 
   describe("advance", () => {
@@ -186,6 +222,21 @@ npm install`,
       // Should stay at step 3
       expect(manager.getCurrentIndex()).toBe(3);
       expect(mockUpdateProgress).not.toHaveBeenCalled();
+    });
+
+    it("should mark all steps completed at last step", async () => {
+      const manager = new GoldenCodeManager(
+        mockSegment,
+        "/test/project",
+        mockUpdateProgress,
+        3, // Last step
+      );
+
+      await manager.advance();
+
+      // loadCurrentStep should return null because allStepsCompleted
+      const code = await manager.loadCurrentStep();
+      expect(code).toBeNull();
     });
 
     it("should handle null segment gracefully", async () => {
@@ -293,6 +344,37 @@ npm install`,
     });
   });
 
+  describe("markAllStepsComplete", () => {
+    it("should prevent loadCurrentStep from loading", async () => {
+      const manager = new GoldenCodeManager(
+        mockSegment,
+        "/test/project",
+        mockUpdateProgress,
+        0,
+      );
+
+      manager.markAllStepsComplete();
+
+      const code = await manager.loadCurrentStep();
+      expect(code).toBeNull();
+    });
+
+    it("should clear current expected code", async () => {
+      const manager = new GoldenCodeManager(
+        mockSegment,
+        "/test/project",
+        mockUpdateProgress,
+        0,
+      );
+
+      await manager.loadCurrentStep();
+      expect(manager.getCurrentCode()).not.toBeNull();
+
+      manager.markAllStepsComplete();
+      expect(manager.getCurrentCode()).toBeNull();
+    });
+  });
+
   describe("updateSegment", () => {
     it("should reset to step 0 when segment changes", async () => {
       const manager = new GoldenCodeManager(
@@ -335,6 +417,44 @@ npm install`,
 
       await manager.updateSegment(newSegment);
       expect(manager.getCurrentCode()).toBeNull();
+    });
+
+    it("should allow loading after segment change following completed segment", async () => {
+      // Simulate: complete last step of segment 1 → transition to segment 2
+      const singleStepSegment: Segment = {
+        ...mockSegment,
+        id: "single-step",
+        goldenCode: "cat > file.ts << 'EOF'\nconsole.log('hi');\nEOF",
+      };
+
+      const manager = new GoldenCodeManager(
+        singleStepSegment,
+        "/test/project",
+        mockUpdateProgress,
+        0,
+      );
+
+      // Load and complete the only step
+      await manager.loadCurrentStep();
+      manager.clear();
+      await manager.advance(); // Marks allStepsCompleted (only 1 step)
+
+      // Verify steps are complete
+      const shouldBeNull = await manager.loadCurrentStep();
+      expect(shouldBeNull).toBeNull();
+
+      // Transition to new segment
+      const newSegment: Segment = {
+        ...mockSegment,
+        id: "next-segment",
+        goldenCode: "mkdir test\ntouch test.txt",
+      };
+      await manager.updateSegment(newSegment);
+
+      // Should be able to load step 0 of new segment
+      const newCode = await manager.loadCurrentStep();
+      expect(newCode).not.toBeNull();
+      expect(newCode?.code).toBe("mkdir test");
     });
   });
 });
