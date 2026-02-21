@@ -2,6 +2,7 @@
   "name": "claude-tutor",
   "version": "0.1.1",
   "description": "A Software Engineering Tutor built with Claude's Agent SDK",
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "bin": {
     "claude-tutor": "./dist/index.js"
