@@ -45,3 +45,7 @@ Debug logs include:
 - Progress save operations during interrupts (SIGINT)
 
 Without debug mode, only user-facing messages and errors are displayed.
+
+## License
+
+This project is licensed under the [GNU AGPL v3](LICENSE).
